@@ -1,14 +1,67 @@
-*{box-sizing:border-box}html,body{margin:0;height:100%;background:#111;color:#eee;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans TC',sans-serif}
-#hud{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:10px 14px;gap:12px;background:linear-gradient(#0008,#0000)}
+/* 基礎：避免手機 100vh 伸縮、誤觸選取、雙擊縮放等 */
+*{box-sizing:border-box}
+html,body{
+  margin:0;
+  height:100%;
+  background:#111;
+  color:#eee;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans TC',sans-serif;
+  -webkit-user-select:none; user-select:none;
+  -webkit-touch-callout:none;
+  touch-action:none; /* 讓搖桿/拖曳不觸發瀏覽器手勢 */
+}
+
+/* 讓 Canvas 吃滿可視高，修正 iOS 地址列造成的 100vh 問題 */
+#game{
+  display:block;
+  width:100vw;
+  height:100dvh; /* ← 改這行：用動態視窗高 */
+}
+
+/* HUD 置頂（避免被 Canvas 擋到點不到），仍可點擊 */
+#hud{
+  position:fixed; top:0; left:0; right:0;
+  display:flex; justify-content:space-between; align-items:center;
+  padding:10px 14px; gap:12px;
+  background:linear-gradient(#0008,#0000);
+  z-index:10; /* ← 新增：確保蓋在畫布上層 */
+}
 #hud .left{display:flex;gap:8px;align-items:center}
-#hud input{background:#1b1b1b;border:1px solid #333;padding:6px 10px;border-radius:8px;color:#eee;outline:none}
-#hud button{background:#2b6cff;border:none;color:white;padding:8px 12px;border-radius:10px;cursor:pointer;box-shadow:0 4px 16px #2b6cff33}
+#hud input{
+  background:#1b1b1b;border:1px solid #333;padding:6px 10px;border-radius:8px;color:#eee;outline:none
+}
+#hud button{
+  background:#2b6cff;border:none;color:white;padding:8px 12px;border-radius:10px;cursor:pointer;box-shadow:0 4px 16px #2b6cff33
+}
 #hud button:active{transform:translateY(1px)}
-#game{display:block;width:100vw;height:100vh}
+
+/* 你目前沒用到 .nameTag（名字是畫在畫布上的），但保留也無妨 */
 .nameTag{position:absolute;color:white;text-shadow:0 2px 6px #000;pointer-events:none}
-#mobileControls{position:fixed;left:12px;right:12px;bottom:12px;display:none;justify-content:space-between;gap:12px}
-#mobileControls .stick{width:120px;height:120px;border-radius:50%;border:2px solid #444;position:relative;background:#2228}
-#mobileControls .stick::after{content:'';position:absolute;left:50%;top:50%;width:56px;height:56px;border-radius:50%;background:#555;transform:translate(-50%,-50%)}
+
+/* 行動裝置控制：置底、置頂層、加安全區 */
+#mobileControls{
+  position:fixed; left:12px; right:12px;
+  bottom:calc(12px + env(safe-area-inset-bottom, 0px));
+  display:none; justify-content:space-between; gap:12px;
+  z-index:20; /* ← 新增：確保在 HUD 與 Canvas 之上 */
+}
+#mobileControls .stick{
+  width:120px;height:120px;border-radius:50%;border:2px solid #444;position:relative;background:#2228
+}
+#mobileControls .stick::after{
+  content:'';position:absolute;left:50%;top:50%;width:56px;height:56px;border-radius:50%;background:#555;transform:translate(-50%,-50%)
+}
 #mobileControls .pedals{display:flex;gap:10px}
 #mobileControls button{background:#2b6cff;padding:10px 14px;border:none;border-radius:12px;color:#fff}
-@media (max-width:900px){#mobileControls{display:flex}}
+
+/* 讓「指標粗糙」的裝置（多半是觸控螢幕）自動顯示控制器
+   你原本用 max-width:900px，在很多大螢幕手機/平板上會吃不到 */
+@media (pointer: coarse){
+  #mobileControls{display:flex}
+}
+
+/* 如果你仍想保留寬度判斷，也可一起放：
+@media (max-width: 900px){
+  #mobileControls{display:flex}
+}
+*/
