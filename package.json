@@ -7,6 +7,9 @@
     "start": "node server.js",
     "dev": "NODE_ENV=development node server.js"
   },
+  "engines": {
+    "node": ">=20 <21"
+  },
   "dependencies": {
     "express": "^4.19.2",
     "socket.io": "^4.7.5"
