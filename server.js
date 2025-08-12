@@ -1,20 +1,29 @@
-
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: '*' }
-});
+const io = new Server(server, { cors: { origin: '*' } });
 
 const PORT = process.env.PORT || 3000;
 
-app.use(express.static('public'));
+// ✅ 用絕對路徑提供靜態檔
+const PUBLIC_DIR = path.join(__dirname, 'public');
+app.use(express.static(PUBLIC_DIR));
 
-const TICK_RATE = 60; // physics
-const SNAPSHOT_RATE = 20; // broadcast
+// ✅ 首頁兜底（含 SPA 其他路由也回 index.html）
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
+
+const TICK_RATE = 60;
+const SNAPSHOT_RATE = 20;
 const TRACK = { width: 1365, height: 768 };
 
 function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
@@ -38,10 +47,8 @@ class Car {
 const players = new Map();
 
 io.on('connection', (socket)=>{
-  // Join
   socket.on('join', (name)=>{
     players.set(socket.id, new Car(socket.id, name));
-    console.log('join', socket.id, name);
     socket.emit('joined', { id: socket.id, track: TRACK });
     io.emit('players', serializePlayers());
   });
@@ -57,6 +64,9 @@ io.on('connection', (socket)=>{
     if(p){ p.name = (name||'').slice(0,16); io.emit('players', serializePlayers()); }
   });
 
+  // ✅ 前端 ping 用的 ack
+  socket.on('pingcheck', (ack)=> ack && ack());
+
   socket.on('disconnect', ()=>{
     players.delete(socket.id);
     io.emit('despawn', socket.id);
@@ -66,30 +76,25 @@ io.on('connection', (socket)=>{
 function physicsStep(dt){
   for(const [,p] of players){
     if(p.finished) continue;
-    const ACCEL = 900;          // px/s^2
+    const ACCEL = 900;
     const BRAKE = 1400;
     const MAX_SPEED = p.inputs.boost ? 700 : 520;
-    const TURN_RATE = 2.8;      // rad/s at 100% steer
+    const TURN_RATE = 2.8;
     const FRICTION = p.inputs.offRoad ? 2.5 : 1.4;
 
-    // Steering depends on speed
     let steer = 0;
     if(p.inputs.left) steer -= 1;
     if(p.inputs.right) steer += 1;
     p.angle += steer * TURN_RATE * dt * clamp(p.speed/MAX_SPEED, 0.2, 1.0);
 
-    // Throttle/brake
     if(p.inputs.up)   p.speed += ACCEL * dt;
     if(p.inputs.down) p.speed -= BRAKE * dt;
-    // Natural drag
     p.speed -= Math.sign(p.speed) * FRICTION * 60 * dt;
     p.speed = clamp(p.speed, -260, MAX_SPEED);
 
-    // Integrate
     p.x += Math.cos(p.angle) * p.speed * dt;
     p.y += Math.sin(p.angle) * p.speed * dt;
 
-    // Soft bounds
     p.x = clamp(p.x, 0, TRACK.width);
     p.y = clamp(p.y, 0, TRACK.height);
   }
@@ -98,10 +103,7 @@ function physicsStep(dt){
 function serializePlayers(){
   const arr = [];
   for(const [,p] of players){
-    arr.push({
-      id: p.id, name: p.name, x: p.x, y: p.y, angle: p.angle,
-      speed: p.speed, color: p.color, lap: p.lap, finished: p.finished
-    });
+    arr.push({ id:p.id, name:p.name, x:p.x, y:p.y, angle:p.angle, speed:p.speed, color:p.color, lap:p.lap, finished:p.finished });
   }
   return arr;
 }
@@ -115,7 +117,6 @@ setInterval(()=>{
   const dt = (now - last)/1000;
   last = now;
 
-  // Fixed-step physics
   accumulator += dt;
   const step = 1/TICK_RATE;
   while(accumulator >= step){
