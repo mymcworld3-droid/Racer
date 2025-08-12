@@ -58,6 +58,14 @@ html,body{
   color: #fff;
 }
 
+// 新增左右按鈕控制
+const leftBtn = document.getElementById('left');
+const rightBtn = document.getElementById('right');
+
+bindHold(leftBtn, v => { keys['ArrowLeft'] = v; });
+bindHold(rightBtn, v => { keys['ArrowRight'] = v; });
+
+
 #mobileControls .pedals{display:flex;gap:10px}
 #mobileControls button{background:#2b6cff;padding:10px 14px;border:none;border-radius:12px;color:#fff}
 
