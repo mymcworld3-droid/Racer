@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>多人賽車 | Racer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="hud">
+    <div class="left">
+      <input id="name" maxlength="16" placeholder="輸入名稱" />
+      <button id="join">加入遊戲</button>
+      <span id="ping">--ms</span>
+    </div>
+    <div class="right">
+      <span>WASD / 方向鍵轉向、加速、煞車；Shift 加速；手機可用搖桿。</span>
+    </div>
+  </div>
+
+  <canvas id="game"></canvas>
+
+  <div id="mobileControls">
+    <div class="stick" id="stick"></div>
+    <div class="pedals">
+      <button id="gas">油門</button>
+      <button id="brake">煞車</button>
+      <button id="boost">加速</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js" type="module"></script>
+</body>
+</html>
