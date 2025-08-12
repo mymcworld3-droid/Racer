@@ -1,5 +1,7 @@
+// 1) 取得 io：保險用法（不論是否 module）
+const socket = (window.io) ? window.io() : io();
 
-const socket = io();
+// 2) Canvas 與 DOM 取得
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const nameInput = document.getElementById('name');
@@ -17,15 +19,24 @@ trackImg.src = 'assets/track.png';
 // Offscreen canvas to detect off-road via pixel color
 const detectCanvas = document.createElement('canvas');
 const detectCtx = detectCanvas.getContext('2d', { willReadFrequently: true });
-trackImg.onload = ()=>{
+
+// 3) 圖片載入完成後再啟動畫面更新
+let trackReady = false;
+trackImg.onload = () => {
   detectCanvas.width = trackImg.width;
   detectCanvas.height = trackImg.height;
   detectCtx.drawImage(trackImg, 0, 0);
+  trackReady = true;
+  requestAnimationFrame(draw);
+};
+trackImg.onerror = () => {
+  console.error('Track image failed to load: assets/track.png');
 };
 
 function resize(){
   canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+  // 行動瀏覽器更穩的視窗高
+  canvas.height = (window.visualViewport?.height || window.innerHeight);
 }
 resize();
 window.addEventListener('resize', resize);
@@ -34,7 +45,7 @@ const camera = { x:0, y:0, scale: 1.0 };
 
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(!trackImg.complete) return;
+  if(!trackReady) { requestAnimationFrame(draw); return; }
 
   // Camera follows me
   const me = players.get(myId);
@@ -54,13 +65,14 @@ function draw(){
     ctx.rotate(p.angle);
     const scale = 0.16; // depends on source image size
     const w = carImg.width*scale, h = carImg.height*scale;
-    // tint
     ctx.filter = 'drop-shadow(0px 6px 6px rgba(0,0,0,0.6))';
     ctx.drawImage(carImg, -w/2, -h/2, w, h);
+
     // color overlay roof stripe
     ctx.globalCompositeOperation = 'source-atop';
     ctx.fillStyle = p.color;
     ctx.fillRect(-w/2, -h/2, w, h/8);
+    ctx.globalCompositeOperation = 'source-over'; // ← 記得還原
     ctx.restore();
 
     // name
@@ -79,7 +91,6 @@ function draw(){
   ctx.restore();
   requestAnimationFrame(draw);
 }
-requestAnimationFrame(draw);
 
 // Input
 const keys = Object.create(null);
@@ -94,12 +105,11 @@ window.addEventListener('keyup', (e)=>{
 });
 
 function isOffRoad(x,y){
-  if(!trackImg.complete) return false;
+  if(!trackReady) return false;
   const px = Math.floor(x);
   const py = Math.floor(y);
   if(px<0 || py<0 || px>=detectCanvas.width || py>=detectCanvas.height) return true;
-  const [r,g,b,a] = detectCtx.getImageData(px,py,1,1).data;
-  // Road is gray-ish (#808080), grass is green-ish. If green component dominates, treat as off-road.
+  const [r,g,b] = detectCtx.getImageData(px,py,1,1).data;
   return (g > r+10 && g > b+10);
 }
 
@@ -120,7 +130,7 @@ function sendInputs(){
   const now = performance.now();
   if(now - lastPing > 800){
     const start = performance.now();
-    socket.timeout(200).emit('pingcheck', ()=>{
+    socket.timeout(400).emit('pingcheck', ()=>{
       pingEl.textContent = Math.round(performance.now()-start)+'ms';
     });
     lastPing = now;
@@ -144,7 +154,6 @@ socket.on('players', (arr)=>{
 });
 
 socket.on('state', (arr)=>{
-  // update positions smoothly
   for(const p of arr){
     const existing = players.get(p.id);
     if(existing){
@@ -163,18 +172,19 @@ socket.on('despawn', (id)=>{
 const gasBtn = document.getElementById('gas');
 const brakeBtn = document.getElementById('brake');
 const boostBtn = document.getElementById('boost');
-function bindHold(btn, on, off){
-  let down = false;
-  const set = (v)=>{ down=v; on(v); sendInputs(); };
-  btn.addEventListener('touchstart', e=>{ e.preventDefault(); set(true); });
-  btn.addEventListener('touchend', e=>{ e.preventDefault(); set(false); });
+
+function bindHold(btn, on){
+  let pressed = false;
+  const set = (v)=>{ pressed=v; on(v); sendInputs(); };
+  btn.addEventListener('touchstart', e=>{ e.preventDefault(); set(true); }, {passive:false});
+  btn.addEventListener('touchend',   e=>{ e.preventDefault(); set(false); }, {passive:false});
   btn.addEventListener('mousedown', ()=>set(true));
-  btn.addEventListener('mouseup', ()=>set(false));
-  document.addEventListener('mouseleave', ()=>down && set(false));
+  btn.addEventListener('mouseup',   ()=>set(false));
+  document.addEventListener('mouseleave', ()=>pressed && set(false));
 }
-bindHold(gasBtn,  v=>{ keys['ArrowUp']=v; }, ()=>{});
-bindHold(brakeBtn,v=>{ keys['ArrowDown']=v; }, ()=>{});
-bindHold(boostBtn,v=>{ keys['Shift']=v; }, ()=>{});
+bindHold(gasBtn,  v=>{ keys['ArrowUp']=v; });
+bindHold(brakeBtn,v=>{ keys['ArrowDown']=v; });
+bindHold(boostBtn,v=>{ keys['Shift']=v; });
 
 // Virtual stick for left/right
 const stick = document.getElementById('stick');
@@ -182,7 +192,7 @@ let stickCenter = null;
 stick.addEventListener('touchstart', (e)=>{
   const t = e.touches[0];
   stickCenter = { x:t.clientX, y:t.clientY };
-});
+}, {passive:false});
 stick.addEventListener('touchmove', (e)=>{
   const t = e.touches[0];
   if(!stickCenter) return;
@@ -190,9 +200,11 @@ stick.addEventListener('touchmove', (e)=>{
   keys['ArrowLeft'] = dx < -10;
   keys['ArrowRight']= dx > 10;
   sendInputs();
-});
-stick.addEventListener('touchend', ()=>{
+  e.preventDefault();
+}, {passive:false});
+stick.addEventListener('touchend', (e)=>{
   stickCenter = null;
   keys['ArrowLeft'] = keys['ArrowRight'] = false;
   sendInputs();
-});
+  e.preventDefault();
+}, {passive:false});
