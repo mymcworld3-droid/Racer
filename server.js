@@ -13,11 +13,14 @@ const io = new Server(server, { cors: { origin: '*' } });
 
 const PORT = process.env.PORT || 3000;
 
-// ✅ 用絕對路徑提供靜態檔
+// 靜態檔
 const PUBLIC_DIR = path.join(__dirname, 'public');
 app.use(express.static(PUBLIC_DIR));
 
-// ✅ 首頁兜底（含 SPA 其他路由也回 index.html）
+// 健康檢查（可選，但超好用）
+app.get('/healthz', (_req, res) => res.status(200).send('ok'));
+
+// 首頁兜底
 app.get('*', (_req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
@@ -64,7 +67,7 @@ io.on('connection', (socket)=>{
     if(p){ p.name = (name||'').slice(0,16); io.emit('players', serializePlayers()); }
   });
 
-  // ✅ 前端 ping 用的 ack
+  // 給前端 ping 用的 ack
   socket.on('pingcheck', (ack)=> ack && ack());
 
   socket.on('disconnect', ()=>{
@@ -133,4 +136,5 @@ setInterval(()=>{
 
 server.listen(PORT, ()=>{
   console.log('🚗 Racer server listening on http://localhost:'+PORT);
+  console.log('📂 Static from:', PUBLIC_DIR);
 });
