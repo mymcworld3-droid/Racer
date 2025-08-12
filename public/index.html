@@ -21,13 +21,17 @@
   <canvas id="game"></canvas>
 
   <div id="mobileControls">
-    <div class="stick" id="stick"></div>
+    <div class="steer">
+      <button id="left">左轉</button>
+      <button id="right">右轉</button>
+    </div>
     <div class="pedals">
       <button id="gas">油門</button>
       <button id="brake">煞車</button>
       <button id="boost">加速</button>
     </div>
   </div>
+
 
   <!-- 先載 socket.io（提供全域 io），再載你的 client.js（一般 script） -->
   <script src="/socket.io/socket.io.js"></script>
