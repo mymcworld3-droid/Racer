@@ -1,6 +1,4 @@
 
-import io from '/socket.io/socket.io.js';
-
 const socket = io();
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
