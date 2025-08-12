@@ -45,12 +45,19 @@ html,body{
   display:none; justify-content:space-between; gap:12px;
   z-index:20; /* ← 新增：確保在 HUD 與 Canvas 之上 */
 }
-#mobileControls .stick{
-  width:120px;height:120px;border-radius:50%;border:2px solid #444;position:relative;background:#2228
+#mobileControls .steer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
-#mobileControls .stick::after{
-  content:'';position:absolute;left:50%;top:50%;width:56px;height:56px;border-radius:50%;background:#555;transform:translate(-50%,-50%)
+#mobileControls .steer button {
+  background: #2b6cff;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 12px;
+  color: #fff;
 }
+
 #mobileControls .pedals{display:flex;gap:10px}
 #mobileControls button{background:#2b6cff;padding:10px 14px;border:none;border-radius:12px;color:#fff}
 
