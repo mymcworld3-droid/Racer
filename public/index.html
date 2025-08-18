@@ -1,40 +1,20 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>多人賽車 | Racer</title>
+  <meta charset="UTF-8" />
+  <title>大地圖賽車</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div id="hud">
-    <div class="left">
-      <input id="name" maxlength="16" placeholder="輸入名稱" />
-      <button id="join">加入遊戲</button>
-      <span id="ping">--ms</span>
+  <h1>大地圖賽車</h1>
+  <div id="game-container">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="joystick">
+      <div id="stick"></div>
     </div>
-    <div class="right">
-      <span>WASD / 方向鍵轉向、加速、煞車；Shift 加速；手機可用搖桿。</span>
-    </div>
+    <div id="score">分數: 0</div>
   </div>
-
-  <canvas id="game"></canvas>
-
-  <div id="mobileControls">
-    <div class="steer">
-      <button id="left">左轉</button>
-      <button id="right">右轉</button>
-    </div>
-    <div class="pedals">
-      <button id="gas">油門</button>
-      <button id="brake">煞車</button>
-      <button id="boost">加速</button>
-    </div>
-  </div>
-
-
-  <!-- 先載 socket.io（提供全域 io），再載你的 client.js（一般 script） -->
   <script src="/socket.io/socket.io.js"></script>
-  <script src="client.js"></script>
+  <script src="main.js"></script>
 </body>
 </html>
