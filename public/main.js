@@ -111,12 +111,13 @@ function drawWorldBorder() {
   ctx.restore();
 }
 
+const ANGLE_OFFSET = Math.PI / 2; // 90°
 // ★ 車子（吃世界座標，內部轉螢幕）
 function drawCar(x, y, angle, color) {
   const s = worldToScreen(x, y); // ← 修正：改用 x,y
   ctx.save();
   ctx.translate(s.x, s.y);
-  ctx.rotate(angle);
+  ctx.rotate((angle || 0) + ANGLE_OFFSET);
   ctx.fillStyle = color;
   ctx.fillRect(-car.width/2, -car.height/2, car.width, car.height);
   ctx.fillStyle = "#fff";
