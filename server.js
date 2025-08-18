@@ -1,7 +1,6 @@
 // server.js — 用 Express 供應靜態檔 + 用 ws 做 WebSocket 同步
 import express from "express";
 import http from "http";
-import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer, WebSocket } from "ws"; // ← 加上 WebSocket
 
@@ -10,7 +9,11 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 // 讓 index.html / main.js / style.css 在同資料夾即可被存取
-app.use(express.static(__dirname));
+import path from "path";
+const STATIC_DIR = path.join(__dirname, "public");
+app.use(express.static(STATIC_DIR));
+app.get("*", (req, res) => res.sendFile(path.join(STATIC_DIR, "index.html")));
+
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
