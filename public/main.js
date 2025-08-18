@@ -1,4 +1,3 @@
-
 // ★ 世界尺寸（你可改大一點）
 const WORLD = { width: 4000, height: 3000 };
 
@@ -54,11 +53,11 @@ function generateObstacles() {
     });
   }
 }
-// 假設你的本地玩家物件叫 car，擁有 car.x, car.y
+
+// 攝影機跟隨（改用 VIEW.w/h）
 function updateCamera() {
-  // 讓玩家大致置中
-  camera.x = Math.max(0, Math.min(car.x - canvas.clientWidth / 2, WORLD.width - canvas.clientWidth));
-  camera.y = Math.max(0, Math.min(car.y - canvas.clientHeight / 2, WORLD.height - canvas.clientHeight));
+  camera.x = Math.max(0, Math.min(car.x - VIEW.w / 2, WORLD.width - VIEW.w));
+  camera.y = Math.max(0, Math.min(car.y - VIEW.h / 2, WORLD.height - VIEW.h));
 }
 
 // ★ 將世界座標轉成螢幕座標
@@ -86,7 +85,7 @@ function drawGrid(step = 100) {
     const s = worldToScreen(x, 0);
     ctx.beginPath();
     ctx.moveTo(s.x, 0);
-    ctx.lineTo(s.x, VIEW.h;
+    ctx.lineTo(s.x, VIEW.h);   // ← 修正：補上 )
     ctx.stroke();
   }
 
@@ -94,7 +93,7 @@ function drawGrid(step = 100) {
     const s = worldToScreen(0, y);
     ctx.beginPath();
     ctx.moveTo(0, s.y);
-    ctx.lineTO(VIEW.w, s.y);
+    ctx.lineTo(VIEW.w, s.y);   // ← 修正：lineTO -> lineTo
     ctx.stroke();
   }
   ctx.restore();
@@ -112,16 +111,16 @@ function drawWorldBorder() {
   ctx.restore();
 }
 
-
+// ★ 車子（吃世界座標，內部轉螢幕）
 function drawCar(x, y, angle, color) {
-  const s = worldToScreen(wx, wy);
+  const s = worldToScreen(x, y); // ← 修正：改用 x,y
   ctx.save();
   ctx.translate(s.x, s.y);
   ctx.rotate(angle);
   ctx.fillStyle = color;
   ctx.fillRect(-car.width/2, -car.height/2, car.width, car.height);
   ctx.fillStyle = "#fff";
-  ctx.fillRect(-car.width/4, -car.height/2+10, car.width/2, car.height/2);
+  ctx.fillRect(-car.width/4, -car.height/2 + 10, car.width/2, car.height/2);
   ctx.restore();
 }
 
@@ -135,13 +134,7 @@ function drawObstacle(obs) {
   ctx.restore();
 }
 
-function getCamera() {
-  const cam = {
-    x: Math.max(0, Math.min(map.width - canvas.width, car.x - canvas.width / 2)),
-    y: Math.max(0, Math.min(map.height - canvas.height, car.y - canvas.height / 2)),
-  };
-  return cam;
-}
+// 🚫 已移除 getCamera()：會引用不存在的 map 導致錯誤
 
 // 搖桿
 const joystick = document.getElementById('joystick');
@@ -158,7 +151,7 @@ function updateJoystick(e) {
     x = e.clientX - joyRect.left - 55;
     y = e.clientY - joyRect.top - 55;
   }
-  let len = Math.sqrt(x*x + y*y);
+  const len = Math.hypot(x, y);
   if (len > 45) {
     x *= 45/len;
     y *= 45/len;
@@ -213,7 +206,7 @@ function loop() {
   drawWorldBorder();
 
   // 障礙物（同時做碰撞）
-  for (let obs of obstacles) {
+  for (const obs of obstacles) {
     const dx = car.x - obs.x, dy = car.y - obs.y;
     if (Math.hypot(dx, dy) < obs.r + car.width/2) {
       car.speed = -car.maxSpeed/2;
@@ -247,20 +240,6 @@ function loop() {
 
   requestAnimationFrame(loop);
 }
-
-function drawLocalCar() {
-  const size = 40; // 車寬
-  const length = 70; // 車長
-  const screen = worldToScreen(car.x, car.y);
-
-  ctx.save();
-  ctx.translate(screen.x, screen.y);
-  ctx.rotate(car.angle || 0);
-  ctx.fillStyle = '#ff4757';
-  ctx.fillRect(-size/2, -length/2, size, length);
-  ctx.restore();
-}
-
 
 // --- WebSocket 連線 ---
 const ws = new WebSocket(`ws://${location.host}`);
