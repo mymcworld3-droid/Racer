@@ -1,3 +1,6 @@
+const WS_URL = (location.protocol === 'https:' ? 'wss' : 'ws') + '://' + location.host;
+const ws = new WebSocket(WS_URL);
+
 // ★ 世界尺寸（你可改大一點）
 const WORLD = { width: 4000, height: 3000 };
 
