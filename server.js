@@ -1,15 +1,16 @@
-// server.js  — 用 Express 供應靜態檔 + 用 ws 做 WebSocket 同步
+// server.js — 用 Express 供應靜態檔 + 用 ws 做 WebSocket 同步
 import express from "express";
 import http from "http";
 import path from "path";
 import { fileURLToPath } from "url";
-import { WebSocketServer } from "ws";
+import { WebSocketServer, WebSocket } from "ws"; // ← 加上 WebSocket
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(express.static(__dirname)); // 你的 index.html / main.js / style.css 放同資料夾即可
+// 讓 index.html / main.js / style.css 在同資料夾即可被存取
+app.use(express.static(__dirname));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
@@ -46,8 +47,9 @@ function packPlayers() {
 
 function broadcast(msgObj) {
   const data = JSON.stringify(msgObj);
-  wss.clients.forEach(ws => {
-    if (ws.readyState === ws.OPEN) ws.send(data);
+  wss.clients.forEach((client) => {
+    // ← 修正：用 WebSocket.OPEN 常數
+    if (client.readyState === WebSocket.OPEN) client.send(data);
   });
 }
 
@@ -71,7 +73,7 @@ wss.on("connection", (ws) => {
     obstacles
   }));
 
-  // 通知其他人有新玩家加入（可選）
+  // 通知其他人有新玩家加入（前端可忽略自己）
   broadcast({ type: "join", id, player: players.get(id) });
 
   // 接收移動
@@ -81,11 +83,13 @@ wss.on("connection", (ws) => {
       if (msg.type === "move" && players.has(id)) {
         const p = players.get(id);
         // 最小授信：只存座標與角度（可加速度/防外掛邏輯）
-        p.x = +msg.x || p.x;
-        p.y = +msg.y || p.y;
-        p.angle = +msg.angle || p.angle;
+        p.x = Number.isFinite(+msg.x) ? +msg.x : p.x;
+        p.y = Number.isFinite(+msg.y) ? +msg.y : p.y;
+        p.angle = Number.isFinite(+msg.angle) ? +msg.angle : p.angle;
       }
-    } catch {}
+    } catch {
+      // 忽略壞訊息
+    }
   });
 
   ws.on("close", () => {
