@@ -1,3 +1,28 @@
+
+// ★ 世界尺寸（你可改大一點）
+const WORLD = { width: 4000, height: 3000 };
+
+// ★ 攝影機：把玩家放中央、計算可見範圍左上角
+const camera = { x: 0, y: 0 };
+
+// ★ 你的 canvas / ctx
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// ★ HiDPI：讓畫面不要小小糊糊的
+(function fixDPR() {
+  const dpr = window.devicePixelRatio || 1;
+  // CSS 尺寸（index.html 寫的 800x600）：
+  const cssW = canvas.width;
+  const cssH = canvas.height;
+  // 設置真實像素尺寸並縮放
+  canvas.width = cssW * dpr;
+  canvas.height = cssH * dpr;
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+})();
+
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
@@ -28,6 +53,57 @@ function generateObstacles() {
     });
   }
 }
+// ★ 將世界座標轉成螢幕座標
+function worldToScreen(wx, wy) {
+  return { x: wx - camera.x, y: wy - camera.y };
+}
+
+// ★ 畫網格（每 100px 一條）
+function drawGrid(step = 100) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth = 1;
+
+  // 計算目前畫面可見範圍覆蓋的世界座標
+  const viewLeft = camera.x;
+  const viewTop = camera.y;
+  const viewRight = camera.x + canvas.clientWidth;
+  const viewBottom = camera.y + canvas.clientHeight;
+
+  // 從對齊網格的整數倍開始畫
+  const startX = Math.floor(viewLeft / step) * step;
+  const startY = Math.floor(viewTop / step) * step;
+
+  for (let x = startX; x <= viewRight; x += step) {
+    const s = worldToScreen(x, 0);
+    ctx.beginPath();
+    ctx.moveTo(s.x, 0);
+    ctx.lineTo(s.x, canvas.clientHeight);
+    ctx.stroke();
+  }
+
+  for (let y = startY; y <= viewBottom; y += step) {
+    const s = worldToScreen(0, y);
+    ctx.beginPath();
+    ctx.moveTo(0, s.y);
+    ctx.lineTo(canvas.clientWidth, s.y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ★ 畫世界邊界（四周一個大矩形）
+function drawWorldBorder() {
+  ctx.save();
+  ctx.strokeStyle = '#00e5ff';
+  ctx.lineWidth = 3;
+
+  const tl = worldToScreen(0, 0);
+  const br = worldToScreen(WORLD.width, WORLD.height);
+  ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+  ctx.restore();
+}
+
 
 function drawCar(x, y, angle, color) {
   ctx.save();
@@ -90,6 +166,12 @@ function resetJoystick() {
   joy.dy = 0;
   joy.active = false;
 }
+// 假設你的本地玩家物件叫 car，擁有 car.x, car.y
+function updateCamera() {
+  // 讓玩家大致置中
+  camera.x = Math.max(0, Math.min(car.x - canvas.clientWidth / 2, WORLD.width - canvas.clientWidth));
+  camera.y = Math.max(0, Math.min(car.y - canvas.clientHeight / 2, WORLD.height - canvas.clientHeight));
+}
 
 joystick.addEventListener('touchstart', updateJoystick);
 joystick.addEventListener('touchmove', updateJoystick);
@@ -116,6 +198,8 @@ function loop() {
   car.y += Math.sin(car.angle) * car.speed;
   car.x = Math.max(car.width/2, Math.min(map.width-car.width/2, car.x));
   car.y = Math.max(car.height/2, Math.min(map.height-car.height/2, car.y));
+  updateCamera();
+  ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
 
   // 碰撞障礙物
   for (let obs of obstacles) {
@@ -125,6 +209,8 @@ function loop() {
       car.speed = -car.maxSpeed/2;
     }
   }
+  drawGrid(100);
+  drawWorldBorder();
 
   // 通知後端自己的座標
   if (ws.readyState === 1 && myId) {
@@ -164,9 +250,23 @@ function loop() {
       ctx.restore();
     }
   }
+  drawLocalCar();
 
   requestAnimationFrame(loop);
 }
+function drawLocalCar() {
+  const size = 40; // 車寬
+  const length = 70; // 車長
+  const screen = worldToScreen(car.x, car.y);
+
+  ctx.save();
+  ctx.translate(screen.x, screen.y);
+  ctx.rotate(car.angle || 0);
+  ctx.fillStyle = '#ff4757';
+  ctx.fillRect(-size/2, -length/2, size, length);
+  ctx.restore();
+}
+
 
 // --- WebSocket 連線 ---
 const ws = new WebSocket(`ws://${location.host}`);
