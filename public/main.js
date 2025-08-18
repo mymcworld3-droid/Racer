@@ -43,19 +43,41 @@ const car = {
 };
 
 let obstacles = [];
-let myId = null;
 let players = {};
+let myId = null;
+let loopStarted = false;
 
-function generateObstacles() {
-  obstacles = [];
-  for (let i = 0; i < 30; i++) {
-    obstacles.push({
-      x: Math.random() * (WORLD.width - 60) + 30,
-      y: Math.random() * (WORLD.height - 60) + 30,
-      r: 30 + Math.random() * 20,
-    });
+ws.onmessage = (evt) => {
+  const msg = JSON.parse(evt.data);
+
+  if (msg.type === 'init') {
+    myId = msg.id;
+    players = msg.players || {};
+    obstacles = msg.obstacles || obstacles;
+
+    // 可選：若要讓前端 WORLD 與伺服器一致（建議一致）
+    // WORLD.width = msg.world.width;  // 若你把 WORLD 改成 let 才能這樣設
+    // WORLD.height = msg.world.height;
+
+    if (!loopStarted) {
+      loopStarted = true;
+      requestAnimationFrame(loop);
+    }
   }
-}
+
+  if (msg.type === 'join') {
+    players[msg.id] = msg.player;
+  }
+
+  if (msg.type === 'sync') {
+    players = msg.players || players;
+  }
+
+  if (msg.type === 'leave') {
+    delete players[msg.id];
+  }
+};
+
 
 // 攝影機跟隨（改用 VIEW.w/h）
 function updateCamera() {
@@ -262,5 +284,4 @@ ws.onmessage = (evt) => {
   }
 };
 
-generateObstacles();
 loop();
