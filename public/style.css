@@ -1,0 +1,39 @@
+body {
+  background: #222;
+  color: #fff;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  text-align: center;
+}
+#game-container {
+  display: inline-block;
+  position: relative;
+}
+#gameCanvas {
+  border: 3px solid #fff;
+  background: #3a3a3a;
+  display: block;
+}
+#joystick {
+  position: absolute;
+  left: 50px;
+  bottom: 60px;
+  width: 110px;
+  height: 110px;
+  background: rgba(150,150,150,0.2);
+  border-radius: 50%;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#stick {
+  width: 40px;
+  height: 40px;
+  background: #aaa;
+  border-radius: 50%;
+  position: absolute;
+  left: 35px;
+  top: 35px;
+  touch-action: none;
+  transition: left 0.05s, top 0.05s;
+}
