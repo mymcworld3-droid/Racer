@@ -5,7 +5,6 @@ const WORLD = { width: 4000, height: 3000 };
 // ★ 攝影機：把玩家放中央、計算可見範圍左上角
 const camera = { x: 0, y: 0 };
 
-// ★ 你的 canvas / ctx
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
@@ -23,8 +22,10 @@ const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 })();
 
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+const VIEW = {
+  get w() { return canvas.clientWidth; },
+  get h() { return canvas.clientHeight; }
+};
 
 const car = {
   x: 400,
@@ -38,7 +39,7 @@ const car = {
   height: 70,
   color: '#f00'
 };
-const map = { width: 1600, height: 1200 };
+
 let obstacles = [];
 let myId = null;
 let players = {};
@@ -47,12 +48,19 @@ function generateObstacles() {
   obstacles = [];
   for (let i = 0; i < 30; i++) {
     obstacles.push({
-      x: Math.random() * (map.width - 60) + 30,
-      y: Math.random() * (map.height - 60) + 30,
+      x: Math.random() * (WORLD.width - 60) + 30,
+      y: Math.random() * (WORLD.height - 60) + 30,
       r: 30 + Math.random() * 20,
     });
   }
 }
+// 假設你的本地玩家物件叫 car，擁有 car.x, car.y
+function updateCamera() {
+  // 讓玩家大致置中
+  camera.x = Math.max(0, Math.min(car.x - canvas.clientWidth / 2, WORLD.width - canvas.clientWidth));
+  camera.y = Math.max(0, Math.min(car.y - canvas.clientHeight / 2, WORLD.height - canvas.clientHeight));
+}
+
 // ★ 將世界座標轉成螢幕座標
 function worldToScreen(wx, wy) {
   return { x: wx - camera.x, y: wy - camera.y };
@@ -67,8 +75,8 @@ function drawGrid(step = 100) {
   // 計算目前畫面可見範圍覆蓋的世界座標
   const viewLeft = camera.x;
   const viewTop = camera.y;
-  const viewRight = camera.x + canvas.clientWidth;
-  const viewBottom = camera.y + canvas.clientHeight;
+  const viewRight = camera.x + VIEW.w;
+  const viewBottom = camera.y + VIEW.h;
 
   // 從對齊網格的整數倍開始畫
   const startX = Math.floor(viewLeft / step) * step;
@@ -78,7 +86,7 @@ function drawGrid(step = 100) {
     const s = worldToScreen(x, 0);
     ctx.beginPath();
     ctx.moveTo(s.x, 0);
-    ctx.lineTo(s.x, canvas.clientHeight);
+    ctx.lineTo(s.x, VIEW.h;
     ctx.stroke();
   }
 
@@ -86,7 +94,7 @@ function drawGrid(step = 100) {
     const s = worldToScreen(0, y);
     ctx.beginPath();
     ctx.moveTo(0, s.y);
-    ctx.lineTo(canvas.clientWidth, s.y);
+    ctx.lineTO(VIEW.w, s.y);
     ctx.stroke();
   }
   ctx.restore();
@@ -106,8 +114,9 @@ function drawWorldBorder() {
 
 
 function drawCar(x, y, angle, color) {
+  const s = worldToScreen(wx, wy);
   ctx.save();
-  ctx.translate(x, y);
+  ctx.translate(s.x, s.y);
   ctx.rotate(angle);
   ctx.fillStyle = color;
   ctx.fillRect(-car.width/2, -car.height/2, car.width, car.height);
@@ -116,10 +125,11 @@ function drawCar(x, y, angle, color) {
   ctx.restore();
 }
 
-function drawObstacle(obs, offsetX, offsetY) {
+function drawObstacle(obs) {
+  const s = worldToScreen(obs.x, obs.y);
   ctx.save();
   ctx.beginPath();
-  ctx.arc(obs.x - offsetX, obs.y - offsetY, obs.r, 0, Math.PI*2);
+  ctx.arc(s.x, s.y, obs.r, 0, Math.PI*2);
   ctx.fillStyle = "#0af";
   ctx.fill();
   ctx.restore();
@@ -166,12 +176,6 @@ function resetJoystick() {
   joy.dy = 0;
   joy.active = false;
 }
-// 假設你的本地玩家物件叫 car，擁有 car.x, car.y
-function updateCamera() {
-  // 讓玩家大致置中
-  camera.x = Math.max(0, Math.min(car.x - canvas.clientWidth / 2, WORLD.width - canvas.clientWidth));
-  camera.y = Math.max(0, Math.min(car.y - canvas.clientHeight / 2, WORLD.height - canvas.clientHeight));
-}
 
 joystick.addEventListener('touchstart', updateJoystick);
 joystick.addEventListener('touchmove', updateJoystick);
@@ -183,77 +187,67 @@ joystick.addEventListener('mouseleave', resetJoystick);
 document.body.addEventListener('mouseup', resetJoystick);
 
 function loop() {
-  // 控制賽車
+  // 控制 & 物理
   if (joy.active) {
-    let len = Math.sqrt(joy.dx*joy.dx + joy.dy*joy.dy);
+    const len = Math.hypot(joy.dx, joy.dy);
     if (len > 0.5) {
-      let direction = Math.atan2(joy.dy, joy.dx);
-      car.angle = direction;
-      car.speed += car.accel;
-      car.speed = Math.min(car.speed, car.maxSpeed);
+      car.angle = Math.atan2(joy.dy, joy.dx);
+      car.speed = Math.min(car.speed + car.accel, car.maxSpeed);
     }
   }
   car.speed *= car.friction;
   car.x += Math.cos(car.angle) * car.speed;
   car.y += Math.sin(car.angle) * car.speed;
-  car.x = Math.max(car.width/2, Math.min(map.width-car.width/2, car.x));
-  car.y = Math.max(car.height/2, Math.min(map.height-car.height/2, car.y));
-  updateCamera();
-  ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
 
-  // 碰撞障礙物
-  for (let obs of obstacles) {
-    let dx = car.x - obs.x;
-    let dy = car.y - obs.y;
-    if (Math.sqrt(dx*dx + dy*dy) < obs.r + car.width/2) {
-      car.speed = -car.maxSpeed/2;
-    }
-  }
+  // 用 WORLD 做邊界夾住
+  car.x = Math.max(car.width/2,  Math.min(WORLD.width  - car.width/2,  car.x));
+  car.y = Math.max(car.height/2, Math.min(WORLD.height - car.height/2, car.y));
+
+  updateCamera();
+
+  // 只清一次（用 VIEW 尺寸）
+  ctx.clearRect(0, 0, VIEW.w, VIEW.h);
+
+  // 背景：網格 + 世界邊界
   drawGrid(100);
   drawWorldBorder();
 
-  // 通知後端自己的座標
-  if (ws.readyState === 1 && myId) {
-    ws.send(JSON.stringify({
-      type: 'move',
-      x: car.x,
-      y: car.y,
-      angle: car.angle
-    }));
-  }
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const cam = getCamera();
-
-  // 畫障礙物
+  // 障礙物（同時做碰撞）
   for (let obs of obstacles) {
-    if (
-      obs.x > cam.x - 50 && obs.x < cam.x + canvas.width + 50 &&
-      obs.y > cam.y - 50 && obs.y < cam.y + canvas.height + 50
-    ) {
-      drawObstacle(obs, cam.x, cam.y);
+    const dx = car.x - obs.x, dy = car.y - obs.y;
+    if (Math.hypot(dx, dy) < obs.r + car.width/2) {
+      car.speed = -car.maxSpeed/2;
     }
+    drawObstacle(obs);
   }
 
-  // 畫所有玩家車
-  for (let id in players) {
-    let p = players[id];
-    drawCar(p.x - cam.x, p.y - cam.y, p.angle, p.color);
-    // 自己車外框
+  // 同步到後端
+  if (ws.readyState === WebSocket.OPEN && myId) {
+    ws.send(JSON.stringify({ type: 'move', x: car.x, y: car.y, angle: car.angle }));
+  }
+
+  // 畫所有玩家（世界座標 → 螢幕）
+  for (const id in players) {
+    const p = players[id];
+    drawCar(p.x, p.y, p.angle, p.color);
     if (id === myId) {
+      const s = worldToScreen(p.x, p.y);
       ctx.save();
       ctx.strokeStyle = 'yellow';
       ctx.lineWidth = 4;
       ctx.beginPath();
-      ctx.arc(p.x - cam.x, p.y - cam.y, car.width/2+8, 0, Math.PI*2);
+      ctx.arc(s.x, s.y, car.width/2 + 8, 0, Math.PI*2);
       ctx.stroke();
       ctx.restore();
     }
   }
-  drawLocalCar();
+
+  // 可選：再畫一次本地車（若 players 不含自己）
+  drawCar(car.x, car.y, car.angle, '#ff4757');
 
   requestAnimationFrame(loop);
 }
+
 function drawLocalCar() {
   const size = 40; // 車寬
   const length = 70; // 車長
