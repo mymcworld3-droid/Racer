@@ -1,52 +1,107 @@
-const express = require('express');
-const http = require('http');
-const WebSocket = require('ws');
+// server.js  — 用 Express 供應靜態檔 + 用 ws 做 WebSocket 同步
+import express from "express";
+import http from "http";
+import path from "path";
+import { fileURLToPath } from "url";
+import { WebSocketServer } from "ws";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
+app.use(express.static(__dirname)); // 你的 index.html / main.js / style.css 放同資料夾即可
+
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
-const players = {};
+const wss = new WebSocketServer({ server });
 
-app.use(express.static('public'));
+/** ---- 遊戲世界狀態（權威在伺服器） ---- */
+const WORLD = { width: 4000, height: 3000 };
 
-wss.on('connection', function connection(ws) {
-  let id = Math.random().toString(36).substr(2, 9);
-  players[id] = {
-    x: 400 + Math.random()*100,
-    y: 300 + Math.random()*100,
-    angle: 0,
-    color: '#' + Math.floor(Math.random()*0xffffff).toString(16).padStart(6, '0')
-  };
-
-  ws.send(JSON.stringify({ type: 'init', id, players }));
-
-  ws.on('message', function incoming(message) {
-    try {
-      const data = JSON.parse(message);
-      if (data.type === 'move') {
-        players[id].x = data.x;
-        players[id].y = data.y;
-        players[id].angle = data.angle;
-      }
-    } catch (e) {}
-  });
-
-  ws.on('close', function() {
-    delete players[id];
-    broadcast({ type: 'leave', id });
-  });
-
-  function broadcast(obj) {
-    const msg = JSON.stringify(obj);
-    wss.clients.forEach(function each(client) {
-      if (client.readyState === WebSocket.OPEN) client.send(msg);
+// 固定障礙物，由伺服器開機時生成一次，所有玩家一致
+const obstacles = [];
+(function generateObstacles() {
+  const count = 30;
+  for (let i = 0; i < count; i++) {
+    obstacles.push({
+      x: Math.random() * (WORLD.width  - 60) + 30,
+      y: Math.random() * (WORLD.height - 60) + 30,
+      r: 30 + Math.random() * 20
     });
   }
+})();
 
-  setInterval(() => {
-    ws.send(JSON.stringify({ type: 'sync', players }));
-  }, 50);
+const players = new Map(); // id -> {x,y,angle,color}
+let uidCounter = 1;
+
+function randomColor() {
+  const c = Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0");
+  return `#${c}`;
+}
+
+function packPlayers() {
+  const obj = {};
+  for (const [id, p] of players) obj[id] = p;
+  return obj;
+}
+
+function broadcast(msgObj) {
+  const data = JSON.stringify(msgObj);
+  wss.clients.forEach(ws => {
+    if (ws.readyState === ws.OPEN) ws.send(data);
+  });
+}
+
+wss.on("connection", (ws) => {
+  const id = String(uidCounter++);
+  // 初始玩家狀態（可放出生點邏輯）
+  const spawn = {
+    x: 200 + Math.random() * (WORLD.width - 400),
+    y: 150 + Math.random() * (WORLD.height - 300),
+    angle: 0,
+    color: randomColor()
+  };
+  players.set(id, spawn);
+
+  // 傳給新玩家：自己的 id、目前所有玩家、障礙物、世界大小
+  ws.send(JSON.stringify({
+    type: "init",
+    id,
+    world: WORLD,
+    players: packPlayers(),
+    obstacles
+  }));
+
+  // 通知其他人有新玩家加入（可選）
+  broadcast({ type: "join", id, player: players.get(id) });
+
+  // 接收移動
+  ws.on("message", (raw) => {
+    try {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type === "move" && players.has(id)) {
+        const p = players.get(id);
+        // 最小授信：只存座標與角度（可加速度/防外掛邏輯）
+        p.x = +msg.x || p.x;
+        p.y = +msg.y || p.y;
+        p.angle = +msg.angle || p.angle;
+      }
+    } catch {}
+  });
+
+  ws.on("close", () => {
+    players.delete(id);
+    broadcast({ type: "leave", id });
+  });
 });
 
-server.listen(3000, () => {
-  console.log('Server running on http://localhost:3000');
+// 以固定頻率廣播全量玩家狀態（10Hz 足夠順）
+setInterval(() => {
+  if (wss.clients.size > 0) {
+    broadcast({ type: "sync", players: packPlayers() });
+  }
+}, 100);
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Server on http://localhost:${PORT}`);
 });
