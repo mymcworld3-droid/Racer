@@ -163,7 +163,7 @@ function loop() {
     const ix = mx / len, iy = my / len;
 
     // 2) 角度（若你要車身跟搖桿，保留；不需要就刪掉下一行）
-    // car.angle = Math.atan2(iy, ix);
+    car.angle = Math.atan2(iy, ix);
 
     // 3) 方向向量平滑：(舊 + 新) / 2（用 DIR_BLEND 權重）  
     dirX = dirX * (1 - DIR_BLEND) + ix * DIR_BLEND;
