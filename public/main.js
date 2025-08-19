@@ -176,10 +176,24 @@ function loop() {
   car.y = Math.max(car.height/2, Math.min(WORLD.height - car.height/2, car.y));
 
   // 簡單碰撞反彈
-  for (const obs of obstacles) {
-    const dx = car.x - obs.x, dy = car.y - obs.y;
-    if (Math.hypot(dx, dy) < obs.r + car.width/2) car.speed = -car.maxSpeed/2;
+  // 障礙物：先做碰撞，再判斷是否在畫面內再畫
+  for (const o of obstacles) {
+    // 碰撞（世界座標）
+    const dx = car.x - o.x, dy = car.y - o.y;
+    if (Math.hypot(dx, dy) < o.r + car.width / 2) {
+      car.speed = -car.maxSpeed / 2;
+    }
+
+    // 僅當在可視範圍內才繪製（避免白畫）
+    const vis =
+      o.x + o.r >= camera.x &&
+      o.x - o.r <= camera.x + VIEW.w &&
+      o.y + o.r >= camera.y &&
+      o.y - o.r <= camera.y + VIEW.h;
+
+    if (vis) drawObstacle(o);
   }
+
 
   updateCamera();
 
