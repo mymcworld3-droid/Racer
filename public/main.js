@@ -39,13 +39,6 @@ const car = {
 let obstacles = [];   // 伺服器下發
 let players   = {};   // 其他玩家（伺服器權威）
 let myId      = null;
-// 飄移參數
-const DRIFT = {
-  normal: 0.85,   // 平常保留多少"側向"速度(0~1，越大越滑)
-  drift:  0.98,   // 飄移時保留的側向速度(越接近1越滑)
-  thresholdSpeed: 350, // 速度到這值就能完全觸發飄移(像素/秒)
-  skidRightVel: 80     // 側滑超過這值就畫輪胎痕
-};
 
 // 讓車用"速度向量"移動（飄移需要）
 car.vx = 0;
@@ -60,12 +53,6 @@ function updateCamera() {
   camera.y = Math.max(0, Math.min(car.y - VIEW.h / 2, WORLD.height - VIEW.h));
 }
 function worldToScreen(wx, wy) { return { x: wx - camera.x, y: wy - camera.y }; }
-//飄移函式
-function clamp(x, a, b){ return Math.max(a, Math.min(b, x)); }
-function shortestAngle(a){
-  // 把角度映射到(-π, π]
-  return ((a + Math.PI) % (Math.PI * 2)) - Math.PI;
-}
 
 function drawGrid(step = 100) {
   ctx.save();
@@ -170,13 +157,19 @@ window.addEventListener("keyup",   e => { keys[e.key] = false; });
 // ======================= Game Loop =======================
 let lastMoveSent = 0;
 function loop() {
-  // === 時間步進（統一使用同一個 now） ===
+  // === 漂移物理（力量不會立刻轉正：以有限角速對齊 + 側向耗損） ===
   const now = performance.now();
   loop._last = loop._last ?? now;
   const dt = Math.min(0.033, (now - loop._last) / 1000 || 0.016);
   loop._last = now;
 
-  // === 輸入：搖桿 + 鍵盤 ===
+  // 參數：抓地與側滑（可往下調/上調體感）
+  const GRIP = {
+    alignRate: 4.0,   // 每秒最多把速度向量朝車頭旋轉的弧度（越小越滑）
+    lateralLoss: 2.2  // 側向速度每秒流失比例（越大越不滑）
+  };
+
+  // 1) 讀取輸入：搖桿 + 鍵盤
   let mx = 0, my = 0;
   if (joy.active) { mx = joy.dx; my = joy.dy; }
   else {
@@ -188,39 +181,52 @@ function loop() {
   const inLen = Math.hypot(mx, my);
   const throttle = clamp(inLen, 0, 1);
 
-  // === 飄移物理 ===
+  // 2) 方向盤：只改車頭角度，不直接改速度向量
   let steerInput = 0;
   if (inLen > 0.1) {
     const desired = Math.atan2(my, mx);
     const diff    = shortestAngle(desired - car.angle);
     steerInput = clamp(diff / (Math.PI / 2), -1, 1);
   }
-  const speed = Math.hypot(car.vx, car.vy);
-  const speedFactor = 0.5 + Math.min(1, speed / 400);
+  // 可依速度加一點「好轉性」
+  const speedNow = Math.hypot(car.vx, car.vy);
+  const speedFactor = 0.5 + Math.min(1, speedNow / 400);
   car.angle += steerInput * car.steerSpeed * speedFactor * dt;
 
+  // 3) 引擎推力：沿「車頭」方向加速（only forward force）
   const fx = Math.cos(car.angle), fy = Math.sin(car.angle);
   car.vx += fx * car.engineAccel * throttle * dt;
   car.vy += fy * car.engineAccel * throttle * dt;
 
+  // 4) 空氣阻力（對整體速度）
   car.vx *= (1 - car.drag * dt);
   car.vy *= (1 - car.drag * dt);
 
-  const rx = -Math.sin(car.angle), ry =  Math.cos(car.angle);
+  // 5) 把「速度向量」以有限角速，朝車頭方向旋轉（關鍵！）
+  let vAng = Math.atan2(car.vy, car.vx);
+  const fAng = car.angle;
+  let delta = ((fAng - vAng + Math.PI) % (Math.PI * 2)) - Math.PI;  // (-π, π]
+  const maxStep = GRIP.alignRate * dt;                               // 本幀最多能轉多少
+  delta = Math.max(-maxStep, Math.min(maxStep, delta));              // 夾角限幅
+  vAng += delta;
+  // 速度大小不變，只旋轉方向
+  const speedMag = Math.hypot(car.vx, car.vy);
+  car.vx = Math.cos(vAng) * speedMag;
+  car.vy = Math.sin(vAng) * speedMag;
+
+  // 6) 再給一點「側向耗損」：保留一部分橫向，形成穩定滑移  
+  const rx = -Math.sin(car.angle), ry = Math.cos(car.angle);
   let fwdVel  = car.vx * fx + car.vy * fy;
   let sideVel = car.vx * rx + car.vy * ry;
-
-  const driftStrength = clamp((speed / DRIFT.thresholdSpeed) * (0.3 + 0.7 * Math.abs(steerInput)), 0, 1);
-  const driftFactor   = DRIFT.normal + (DRIFT.drift - DRIFT.normal) * driftStrength;
-  sideVel *= driftFactor;
-
+  // 側向分量衰減（不是歸零），留下滑移感
+  sideVel *= Math.max(0, 1 - GRIP.lateralLoss * dt);
+  // 合成回速度
   car.vx = fx * fwdVel + rx * sideVel;
   car.vy = fy * fwdVel + ry * sideVel;
 
+  // 7) 積分位置 & 邊界
   car.x += car.vx * dt;
   car.y += car.vy * dt;
-
-  // 邊界
   car.x = Math.max(car.width/2,  Math.min(WORLD.width  - car.width/2,  car.x));
   car.y = Math.max(car.height/2, Math.min(WORLD.height - car.height/2, car.y));
 
