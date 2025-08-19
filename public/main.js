@@ -35,7 +35,7 @@ const car = {
 let dirX = Math.cos(car.angle);
 let dirY = Math.sin(car.angle);
 
-const DIR_BLEND = 0.04;
+const DIR_BLEND = 0.1;
 
 let obstacles = [];
 let players = {};
@@ -182,8 +182,8 @@ function loop() {
 
 
   // 用平滑後的移動向量整合位置（★車身角度 car.angle 不改）
-  car.x += dirX * car.speed * 2;
-  car.y += dirY * car.speed * 2;
+  car.x += dirX * car.speed ;
+  car.y += dirY * car.speed ;
   
   // Clamp to world
   car.x = Math.max(car.width / 2, Math.min(WORLD.width - car.width / 2, car.x));
