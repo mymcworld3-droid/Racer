@@ -50,7 +50,7 @@ const car = {
 let dirX = Math.cos(car.angle);
 let dirY = Math.sin(car.angle);
 
-const DIR_BLEND = 0.05;
+const DIR_BLEND = 0.03;
 
 let obstacles = [];
 let players = {};
