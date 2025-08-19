@@ -240,7 +240,7 @@ function loop() {
   
   // 不在路面上 → 限速 + 更強的耗速（砂石/草地效果）
   if (TRACK.ready && !isOnRoad(car.x, car.y)) {
-    const OFFROAD_LIMIT = 2.5;        // 路外最高速
+    const OFFROAD_LIMIT = 5;        // 路外最高速
     car.speed = Math.min(car.speed, OFFROAD_LIMIT);
     car.speed *= 0.92;                // 每幀多吃一點速度
   }
