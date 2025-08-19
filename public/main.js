@@ -31,6 +31,9 @@ const car = {
   width: 40, height: 70,
   color: '#ff4757'
 };
+// 方向向量（用來做 (舊 + 新) / 2 的平滑）
+let dirX = Math.cos(car.angle);
+let dirY = Math.sin(car.angle);
 
 let obstacles = [];
 let players = {};
@@ -159,6 +162,9 @@ function loop() {
   } else {
     car.speed *= car.friction;
   }
+
+  car.x += Math.cos(car.angle) * car.speed;
+  car.y += Math.sin(car.angle) * car.speed;
 
   // Integrate
   car.x += Math.cos(car.angle) * car.speed;
