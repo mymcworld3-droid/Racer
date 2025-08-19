@@ -88,6 +88,13 @@ function isOnRoad(wx, wy) {
   const Y = (r + g + b) / 3;                                   // 亮度
   return isGray && Y > 70 && Y < 200;                          // 中等亮度的灰=柏油
 }
+if (TRACK.ready) {
+  // 從世界中央往右掃到第一個在路上的點就放車
+  let sx = WORLD.width * 0.5, sy = WORLD.height * 0.5;
+  for (let dx = 0; dx < 600; dx += 10) {
+    if (isOnRoad(sx + dx, sy)) { car.x = sx + dx; car.y = sy; break; }
+  }
+}
 
 function drawGrid(step = 100) {
   ctx.save();
