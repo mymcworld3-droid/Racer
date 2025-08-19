@@ -27,7 +27,7 @@ const VIEW = {
 const car = {
   x: 400, y: 300,
   angle: 0, speed: 0,
-  maxSpeed: 5, accel: 0.15, friction: 0.98,
+  maxSpeed: 10, accel: 0.15, friction: 0.98,
   width: 40, height: 70,
   color: '#ff4757'
 };
