@@ -162,24 +162,24 @@ function loop() {
     // 新輸入的單位向量
     const ix = mx / len, iy = my / len;
 
-    // 平滑： (舊 + 新) / 2 ；或 DIR_BLEND 做權重
+    // ★ 車身角度直接跟搖桿方向
+    car.angle = Math.atan2(iy, ix);
+
+    // 平滑速度方向： (舊 + 新) 的權重平均
     dirX = dirX * (1 - DIR_BLEND) + ix * DIR_BLEND;
     dirY = dirY * (1 - DIR_BLEND) + iy * DIR_BLEND;
 
     // 正規化避免長度衰減
     let d = Math.hypot(dirX, dirY);
-    if (d < 1e-6) { // 太小就回到輸入方向
-      dirX = (len > 0.2 ? mx/len : 1);
-      dirY = (len > 0.2 ? my/len : 0);
-      d = 1;
-    }
+    if (d < 1e-6) { dirX = ix; dirY = iy; d = 1; }
     dirX /= d; dirY /= d;
 
-    // 速度只看油門
+    // 加速
     car.speed = Math.min(car.speed + car.accel, car.maxSpeed);
   } else {
-    car.speed *= car.friction;
+    car.speed *= car.friction; // 沒輸入就減速，角度保持
   }
+
 
   // 用平滑後的移動向量整合位置（★車身角度 car.angle 不改）
   car.x += dirX * car.speed;
