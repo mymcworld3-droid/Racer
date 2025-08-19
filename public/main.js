@@ -175,6 +175,13 @@ function loop() {
   car.x = Math.max(car.width/2,  Math.min(WORLD.width  - car.width/2,  car.x));
   car.y = Math.max(car.height/2, Math.min(WORLD.height - car.height/2, car.y));
 
+  updateCamera();
+
+  // draw
+  ctx.clearRect(0, 0, VIEW.w, VIEW.h);
+  drawGrid(100);
+  drawWorldBorder();
+  
   // 簡單碰撞反彈
   // 障礙物：先做碰撞，再判斷是否在畫面內再畫
   for (const o of obstacles) {
@@ -193,14 +200,6 @@ function loop() {
 
     if (vis) drawObstacle(o);
   }
-
-
-  updateCamera();
-
-  // draw
-  ctx.clearRect(0, 0, VIEW.w, VIEW.h);
-  drawGrid(100);
-  drawWorldBorder();
 
   // 本地車
   drawCar(car.x, car.y, car.angle, car.color);
