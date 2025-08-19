@@ -170,13 +170,13 @@ window.addEventListener("keyup",   e => { keys[e.key] = false; });
 // ======================= Game Loop =======================
 let lastMoveSent = 0;
 function loop() {
-  // === 飄移版物理更新（含方向、加速、阻力、側滑） ===
+  // === 時間步進（統一使用同一個 now） ===
   const now = performance.now();
   loop._last = loop._last ?? now;
   const dt = Math.min(0.033, (now - loop._last) / 1000 || 0.016);
   loop._last = now;
 
-  // 1) 讀取操控輸入：類比搖桿 + 鍵盤備援
+  // === 輸入：搖桿 + 鍵盤 ===
   let mx = 0, my = 0;
   if (joy.active) { mx = joy.dx; my = joy.dy; }
   else {
@@ -188,68 +188,50 @@ function loop() {
   const inLen = Math.hypot(mx, my);
   const throttle = clamp(inLen, 0, 1);
 
-  // 2) 方向：用「目標方向 - 車頭」的差值當轉向輸入，速度越快轉向越敏感
+  // === 飄移物理 ===
   let steerInput = 0;
   if (inLen > 0.1) {
     const desired = Math.atan2(my, mx);
     const diff    = shortestAngle(desired - car.angle);
-    steerInput = clamp(diff / (Math.PI / 2), -1, 1); // -1~1
+    steerInput = clamp(diff / (Math.PI / 2), -1, 1);
   }
   const speed = Math.hypot(car.vx, car.vy);
-  const speedFactor = 0.5 + Math.min(1, speed / 400); // 速度越快越好轉（可調）
+  const speedFactor = 0.5 + Math.min(1, speed / 400);
   car.angle += steerInput * car.steerSpeed * speedFactor * dt;
 
-  // 3) 前進推力（只沿車頭方向加速）
   const fx = Math.cos(car.angle), fy = Math.sin(car.angle);
   car.vx += fx * car.engineAccel * throttle * dt;
   car.vy += fy * car.engineAccel * throttle * dt;
 
-  // 4) 空氣阻力（對整體速度）
   car.vx *= (1 - car.drag * dt);
   car.vy *= (1 - car.drag * dt);
 
-// 5) 分解成「前進/側向」速度，側向套用飄移係數
-  const rx = -Math.sin(car.angle), ry =  Math.cos(car.angle); // 右側單位向量
-  let fwdVel  = car.vx * fx + car.vy * fy;  // 前進分量
-  let sideVel = car.vx * rx + car.vy * ry;  // 側向分量（越大=越側滑）
+  const rx = -Math.sin(car.angle), ry =  Math.cos(car.angle);
+  let fwdVel  = car.vx * fx + car.vy * fy;
+  let sideVel = car.vx * rx + car.vy * ry;
 
-  // 飄移強度：速度高 & 轉向大 → 飄得更兇
   const driftStrength = clamp((speed / DRIFT.thresholdSpeed) * (0.3 + 0.7 * Math.abs(steerInput)), 0, 1);
   const driftFactor   = DRIFT.normal + (DRIFT.drift - DRIFT.normal) * driftStrength;
-
-  // 這行就是「飄移」的核心：保留更多側向速度（數值越接近1越滑）
   sideVel *= driftFactor;
 
-  // 6) 合成回速度向量
   car.vx = fx * fwdVel + rx * sideVel;
   car.vy = fy * fwdVel + ry * sideVel;
 
-  // 7) 整合位置
   car.x += car.vx * dt;
   car.y += car.vy * dt;
 
-  // 8) 世界邊界 & 簡單障礙碰撞反彈
+  // 邊界
   car.x = Math.max(car.width/2,  Math.min(WORLD.width  - car.width/2,  car.x));
   car.y = Math.max(car.height/2, Math.min(WORLD.height - car.height/2, car.y));
 
-  for (const o of obstacles) {
-    const dx = car.x - o.x, dy = car.y - o.y;
-    const dist = Math.hypot(dx, dy);
-    const minD = o.r + car.width/2;
-    if (dist < minD) {
-      // 推離開
-      const nx = dx / (dist || 1), ny = dy / (dist || 1);
-      const push = (minD - dist) + 0.5;
-      car.x += nx * push;
-      car.y += ny * push;
-      // 反射一部分速度（降低速度看起來像撞到）
-      const vn = car.vx * nx + car.vy * ny;
-      car.vx -= vn * nx * 1.5;
-      car.vy -= vn * ny * 1.5;
-    }
-  }
+  updateCamera();
 
-  // 9) 飄移時畫輪胎痕（簡易版）
+  // === 繪圖開始：先清，再畫背景 ===
+  ctx.clearRect(0, 0, VIEW.w, VIEW.h);
+  drawGrid(100);
+  drawWorldBorder();
+
+  // 輪胎痕（要放在 clear 之後才看得到）
   const sideSpeedAbs = Math.abs(sideVel);
   if (sideSpeedAbs > DRIFT.skidRightVel && speed > 120) {
     const rearX = car.x - fx * (car.height * 0.35);
@@ -268,44 +250,51 @@ function loop() {
     ctx.restore();
   }
 
-  updateCamera();
-
-  // draw
-  ctx.clearRect(0, 0, VIEW.w, VIEW.h);
-  drawGrid(100);
-  drawWorldBorder();
-  
-  // 簡單碰撞反彈
-  // 障礙物：先做碰撞，再判斷是否在畫面內再畫
+  // === 障礙物：碰撞 + 視口裁切 + 繪製（合併一個迴圈） ===
   for (const o of obstacles) {
-    // 碰撞（世界座標）
+    // 碰撞
     const dx = car.x - o.x, dy = car.y - o.y;
-    if (Math.hypot(dx, dy) < o.r + car.width / 2) {
-      car.speed = -car.maxSpeed / 2;
+    const dist = Math.hypot(dx, dy);
+    const minD = o.r + car.width/2;
+    if (dist < minD) {
+      const nx = dx / (dist || 1), ny = dy / (dist || 1);
+      const push = (minD - dist) + 0.5;
+      car.x += nx * push; car.y += ny * push;
+      const vn = car.vx * nx + car.vy * ny;
+      car.vx -= vn * nx * 1.5; car.vy -= vn * ny * 1.5;
     }
 
-    // 僅當在可視範圍內才繪製（避免白畫）
+    // 可視區才畫
     const vis =
       o.x + o.r >= camera.x &&
       o.x - o.r <= camera.x + VIEW.w &&
       o.y + o.r >= camera.y &&
       o.y - o.r <= camera.y + VIEW.h;
 
-    if (vis) drawObstacle(o);
+    if (vis) {
+      const s = worldToScreen(o.x, o.y);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, o.r, 0, Math.PI*2);
+      ctx.fillStyle = "#0af";
+      ctx.fill();
+      // 建議加外框，對比更清楚
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "rgba(0,0,0,0.6)";
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
-  // 本地車
+  // 本地車 & 其他玩家
   drawCar(car.x, car.y, car.angle, car.color);
-
-  // 其他玩家
   for (const id in players) {
-    if (id === myId) continue; // 避免自己畫兩次
+    if (id === myId) continue;
     const p = players[id];
     drawCar(p.x, p.y, p.angle, p.color);
   }
 
-  // 傳輸節流（50ms）
-  const now = performance.now();
+  // 傳輸節流（50ms）— 使用同一個 now
   if (ws.readyState === WebSocket.OPEN && myId && now - lastMoveSent > 50) {
     ws.send(JSON.stringify({ type: 'move', x: car.x, y: car.y, angle: car.angle }));
     lastMoveSent = now;
@@ -313,6 +302,7 @@ function loop() {
 
   requestAnimationFrame(loop);
 }
+
 // 立即啟動本地迴圈（就算 WS 沒連上也能玩）
 requestAnimationFrame(loop);
 
