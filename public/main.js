@@ -167,7 +167,12 @@ function loop() {
     dirY = dirY * (1 - DIR_BLEND) + iy * DIR_BLEND;
 
     // 正規化避免長度衰減
-    const d = Math.hypot(dirX, dirY) || 1;
+    let d = Math.hypot(dirX, dirY);
+    if (d < 1e-6) { // 太小就回到輸入方向
+      dirX = (len > 0.2 ? mx/len : 1);
+      dirY = (len > 0.2 ? my/len : 0);
+      d = 1;
+    }
     dirX /= d; dirY /= d;
 
     // 速度只看油門
@@ -245,7 +250,6 @@ ws.onmessage = (evt) => {
     if (players[myId]) {
       car.x = players[myId].x;
       car.y = players[myId].y;
-      car.angle = players[myId].angle || 0;
     }
   } else if (msg.type === 'join') {
     players[msg.id] = msg.player;
