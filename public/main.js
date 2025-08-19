@@ -159,31 +159,44 @@ function loop() {
 
   const len = Math.hypot(mx, my);
   if (len > 0.2) {
-    // 新輸入的單位向量
+    // 1) 新輸入單位向量
     const ix = mx / len, iy = my / len;
 
-    // ★ 車身角度直接跟搖桿方向
-    car.angle = Math.atan2(iy, ix);
+    // 2) 角度（若你要車身跟搖桿，保留；不需要就刪掉下一行）
+    // car.angle = Math.atan2(iy, ix);
 
-    // 平滑速度方向： (舊 + 新) 的權重平均
+    // 3) 方向向量平滑：(舊 + 新) / 2（用 DIR_BLEND 權重）  
     dirX = dirX * (1 - DIR_BLEND) + ix * DIR_BLEND;
     dirY = dirY * (1 - DIR_BLEND) + iy * DIR_BLEND;
-
-    // 正規化避免長度衰減
-    let d = Math.hypot(dirX, dirY);
-    if (d < 1e-6) { dirX = ix; dirY = iy; d = 1; }
+    const d = Math.hypot(dirX, dirY) || 1;
     dirX /= d; dirY /= d;
 
-    // 加速
-    car.speed = Math.min(car.speed + car.accel, car.maxSpeed);
+    // 4) 目標速度 = maxSpeed * 油門(搖桿大小)
+    const throttle = Math.min(1, len);
+    const targetSpeed = car.maxSpeed * throttle;
+
+    // 與目前移動方向的夾角，用來判定煞車強度
+    const align = ix * dirX + iy * dirY; // [-1..1]，<0 代表反向
+    const brakePerFrame  = (1 - car.friction) * (align < 0 ? 6 : 2); // 反向時煞更重
+
+    if (car.speed < targetSpeed) {
+      // 加速（用你原本的 accel）
+      car.speed = Math.min(targetSpeed, car.speed + car.accel);
+    } else {
+      // 減速（靠「主動煞車」，比惰性大）
+      car.speed = Math.max(targetSpeed, car.speed - brakePerFrame);
+    }
   } else {
-    car.speed *= car.friction; // 沒輸入就減速，角度保持
+    // 沒輸入 → 惰性滑行（用原本的摩擦）
+    car.speed *= car.friction;
+    // 避免超小殘速
+    if (car.speed < 0.01) car.speed = 0;
   }
 
+  // 用平滑後的移動向量整合位置
+  car.x += dirX * car.speed;
+  car.y += dirY * car.speed;
 
-  // 用平滑後的移動向量整合位置（★車身角度 car.angle 不改）
-  car.x += dirX * car.speed ;
-  car.y += dirY * car.speed ;
   
   // Clamp to world
   car.x = Math.max(car.width / 2, Math.min(WORLD.width - car.width / 2, car.x));
