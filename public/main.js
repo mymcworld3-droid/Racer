@@ -35,6 +35,8 @@ const car = {
 let dirX = Math.cos(car.angle);
 let dirY = Math.sin(car.angle);
 
+const DIR_BLEND = 0.5;
+
 let obstacles = [];
 let players = {};
 let myId = null;
@@ -145,31 +147,39 @@ window.addEventListener('keyup', e => { keys[e.key] = false; });
 let lastMoveSent = 0;
 function loop() {
   // Input
+  // === 搖桿只影響移動方向；車身角度不跟搖桿 ===
   let mx = 0, my = 0;
   if (joy.active) { mx = joy.dx; my = joy.dy; }
   else {
     if (keys['ArrowLeft'] || keys['a']) mx -= 1;
-    if (keys['ArrowRight'] || keys['d']) mx += 1;
-    if (keys['ArrowUp'] || keys['w']) my -= 1;
+    if (keys['ArrowRight']|| keys['d']) mx += 1;
+    if (keys['ArrowUp']   || keys['w']) my -= 1;
     if (keys['ArrowDown'] || keys['s']) my += 1;
   }
-  const len = Math.hypot(mx, my);
 
-  // Heading & speed
-  if (len > 0.5) {
-    car.angle = Math.atan2(my, mx);
+  const len = Math.hypot(mx, my);
+  if (len > 0.2) {
+    // 新輸入的單位向量
+    const ix = mx / len, iy = my / len;
+
+    // 平滑： (舊 + 新) / 2 ；或 DIR_BLEND 做權重
+    dirX = dirX * (1 - DIR_BLEND) + ix * DIR_BLEND;
+    dirY = dirY * (1 - DIR_BLEND) + iy * DIR_BLEND;
+
+    // 正規化避免長度衰減
+    const d = Math.hypot(dirX, dirY) || 1;
+    dirX /= d; dirY /= d;
+
+    // 速度只看油門
     car.speed = Math.min(car.speed + car.accel, car.maxSpeed);
   } else {
     car.speed *= car.friction;
   }
 
-  car.x += Math.cos(car.angle) * car.speed;
-  car.y += Math.sin(car.angle) * car.speed;
-
-  // Integrate
-  car.x += Math.cos(car.angle) * car.speed;
-  car.y += Math.sin(car.angle) * car.speed;
-
+  // 用平滑後的移動向量整合位置（★車身角度 car.angle 不改）
+  car.x += dirX * car.speed;
+  car.y += dirY * car.speed;
+  
   // Clamp to world
   car.x = Math.max(car.width / 2, Math.min(WORLD.width - car.width / 2, car.x));
   car.y = Math.max(car.height / 2, Math.min(WORLD.height - car.height / 2, car.y));
