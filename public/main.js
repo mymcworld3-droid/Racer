@@ -24,6 +24,21 @@ const VIEW = {
 };
 
 // ======================= State =======================
+// ===== Track image (用圖片當賽道) =====
+const TRACK = { img: new Image(), ready: false, iw: 0, ih: 0, data: null, cv: null, cx: null };
+TRACK.img.src = 'track.png';            // ← 若檔名不同改這裡
+TRACK.img.onload = () => {
+  TRACK.iw = TRACK.img.naturalWidth;    // 例如 1365
+  TRACK.ih = TRACK.img.naturalHeight;   // 例如 768
+  // 建立一個離屏畫布做像素取樣（當作碰撞/路面 mask）
+  TRACK.cv = document.createElement('canvas');
+  TRACK.cv.width = TRACK.iw; TRACK.cv.height = TRACK.ih;
+  TRACK.cx = TRACK.cv.getContext('2d');
+  TRACK.cx.drawImage(TRACK.img, 0, 0);
+  TRACK.data = TRACK.cx.getImageData(0, 0, TRACK.iw, TRACK.ih).data;
+  TRACK.ready = true;
+};
+
 const car = {
   x: 400, y: 300,
   angle: 0, speed: 0,
@@ -47,6 +62,32 @@ function updateCamera() {
   camera.y = Math.max(0, Math.min(car.y - VIEW.h / 2, WORLD.height - VIEW.h));
 }
 function worldToScreen(wx, wy) { return { x: wx - camera.x, y: wy - camera.y }; }
+
+// 把賽道圖畫到世界（會跟著相機捲動）
+function drawTrackImage() {
+  if (!TRACK.ready) return;
+  ctx.drawImage(TRACK.img, -camera.x, -camera.y, WORLD.width, WORLD.height);
+}
+
+// 將世界座標映到賽道圖像素座標
+function worldToTrackUV(wx, wy) {
+  const u = Math.floor(wx * (TRACK.iw / WORLD.width));
+  const v = Math.floor(wy * (TRACK.ih / WORLD.height));
+  return { u, v };
+}
+
+// 判斷是否在「灰色柏油路面」上（以低飽和灰色做為路面）
+function isOnRoad(wx, wy) {
+  if (!TRACK.ready) return true; // 還沒載好先放行
+  const { u, v } = worldToTrackUV(wx, wy);
+  if (u < 0 || v < 0 || u >= TRACK.iw || v >= TRACK.ih) return false;
+  const i = (v * TRACK.iw + u) * 4;
+  const r = TRACK.data[i], g = TRACK.data[i + 1], b = TRACK.data[i + 2], a = TRACK.data[i + 3];
+  if (a < 16) return false;
+  const isGray = Math.abs(r - g) < 18 && Math.abs(g - b) < 18; // 近似灰
+  const Y = (r + g + b) / 3;                                   // 亮度
+  return isGray && Y > 70 && Y < 200;                          // 中等亮度的灰=柏油
+}
 
 function drawGrid(step = 100) {
   ctx.save();
@@ -196,7 +237,13 @@ function loop() {
   // 用平滑後的移動向量整合位置
   car.x += dirX * car.speed;
   car.y += dirY * car.speed;
-
+  
+  // 不在路面上 → 限速 + 更強的耗速（砂石/草地效果）
+  if (TRACK.ready && !isOnRoad(car.x, car.y)) {
+    const OFFROAD_LIMIT = 2.5;        // 路外最高速
+    car.speed = Math.min(car.speed, OFFROAD_LIMIT);
+    car.speed *= 0.92;                // 每幀多吃一點速度
+  }
   
   // Clamp to world
   car.x = Math.max(car.width / 2, Math.min(WORLD.width - car.width / 2, car.x));
@@ -219,7 +266,8 @@ function loop() {
 
   // Draw
   ctx.clearRect(0, 0, VIEW.w, VIEW.h);
-  drawGrid(100);
+  //drawGrid(100);
+  drawTrackImage();
   drawWorldBorder();
 
   for (const o of obstacles) {
