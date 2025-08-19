@@ -54,6 +54,13 @@ function updateCamera() {
 }
 function worldToScreen(wx, wy) { return { x: wx - camera.x, y: wy - camera.y }; }
 
+// --- 漂移/工具函式（缺這些會直接掛） ---
+const DRIFT = {
+  skidRightVel: 80  // 側滑超過這個值就畫輪胎痕
+};
+function clamp(x, a, b){ return Math.max(a, Math.min(b, x)); }
+function shortestAngle(a){ return ((a + Math.PI) % (Math.PI * 2)) - Math.PI; }
+
 function drawGrid(step = 100) {
   ctx.save();
   ctx.strokeStyle = 'rgba(255,255,255,0.15)';
@@ -156,19 +163,15 @@ window.addEventListener("keyup",   e => { keys[e.key] = false; });
 
 // ======================= Game Loop =======================
 let lastMoveSent = 0;
+// 參數：抓地與側滑（可往下調/上調體感）
+  const GRIP = { alignRate: 4.0, lateralLoss: 2.2};
 function loop() {
   // === 漂移物理（力量不會立刻轉正：以有限角速對齊 + 側向耗損） ===
   const now = performance.now();
   loop._last = loop._last ?? now;
   const dt = Math.min(0.033, (now - loop._last) / 1000 || 0.016);
   loop._last = now;
-
-  // 參數：抓地與側滑（可往下調/上調體感）
-  const GRIP = {
-    alignRate: 4.0,   // 每秒最多把速度向量朝車頭旋轉的弧度（越小越滑）
-    lateralLoss: 2.2  // 側向速度每秒流失比例（越大越不滑）
-  };
-
+  
   // 1) 讀取輸入：搖桿 + 鍵盤
   let mx = 0, my = 0;
   if (joy.active) { mx = joy.dx; my = joy.dy; }
@@ -239,7 +242,7 @@ function loop() {
 
   // 輪胎痕（要放在 clear 之後才看得到）
   const sideSpeedAbs = Math.abs(sideVel);
-  if (sideSpeedAbs > DRIFT.skidRightVel && speed > 120) {
+  if (sideSpeedAbs > DRIFT.skidRightVel && speedMag > 120) {
     const rearX = car.x - fx * (car.height * 0.35);
     const rearY = car.y - fy * (car.height * 0.35);
     const leftX = rearX - rx * (car.width * 0.28);
