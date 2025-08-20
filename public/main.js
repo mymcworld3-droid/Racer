@@ -114,12 +114,12 @@ function isOnRoad(wx, wy) {
   return isGray && Y > 70 && Y < 200;
 }
 
-if (TRACK.ready) {
-  let sx = WORLD.width * 0.5, sy = WORLD.height * 0.5;
-  for (let dx = 0; dx < 600; dx += 10) {
-    if (isOnRoad(sx + dx, sy)) { car.x = sx + dx; car.y = sy; break; }
-  }
+// 放出生點在路上（載入完成才找得到）
+let sx = WORLD.width * 0.5, sy = WORLD.height * 0.5;
+for (let dx = 0; dx < 2000; dx += 10) {
+  if (isOnRoad(sx + dx, sy)) { car.x = sx + dx; car.y = sy; break; }
 }
+
 
 function drawGrid(step = 100) {
   ctx.save();
