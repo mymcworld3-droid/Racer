@@ -283,7 +283,7 @@ function loop() {
       o.x - o.r <= camera.x + VIEW.w &&
       o.y + o.r >= camera.y &&
       o.y - o.r <= camera.y + VIEW.h;
-    if (vis) drawObstacle(o);
+    //if (vis) drawObstacle(o);
   }
 
   drawCar(car.x, car.y, car.angle, car.color);
