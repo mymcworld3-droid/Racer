@@ -32,30 +32,53 @@ const TRACK = {
   mdata: null         // mask 的像素資料
 };
 const TRACK_SRC = 'track2.png'; // 檔名自行對應
-
 (async function loadTrack() {
   const img = new Image();
   img.src = TRACK_SRC;
-  await img.decode();
 
-  // 1) 一次性縮放到 WORLD 尺寸（之後只做裁切，不再縮放）
-  TRACK.bmp = await createImageBitmap(
-    img, { resizeWidth: WORLD.width, resizeHeight: WORLD.height, resizeQuality: 'high' }
-  );
+  // 安全載入（相容舊瀏覽器）
+  await new Promise((resolve, reject) => {
+    img.onload = resolve;
+    img.onerror = reject;
+  });
 
-  // 2) 做一張低解析度的碰撞 mask（加速 isOnRoad）
+  // A) 一次性縮放到 WORLD 尺寸（畫到離屏 canvas）
+  const worldCV = document.createElement('canvas');
+  worldCV.width = WORLD.width;
+  worldCV.height = WORLD.height;
+  worldCV.getContext('2d').drawImage(img, 0, 0, WORLD.width, WORLD.height);
+
+  // 建立世界尺寸的可繪位圖（drawImage 時只需裁切，不再縮放）
+  if (window.createImageBitmap) {
+    TRACK.bmp = await createImageBitmap(worldCV);
+  } else {
+    // 極少數環境沒有 createImageBitmap，用 <img> 當替代
+    const tmp = new Image();
+    tmp.src = worldCV.toDataURL();
+    await new Promise(r => (tmp.onload = r));
+    TRACK.bmp = tmp;
+  }
+
+  // B) 低解析度碰撞 mask（大幅減少像素取樣成本）
   const mw = Math.min(1024, WORLD.width);
   const mh = Math.round(WORLD.height * (mw / WORLD.width));
   const cv = document.createElement('canvas');
   cv.width = mw; cv.height = mh;
   const cx = cv.getContext('2d', { willReadFrequently: true });
-  // 直接用已縮放的 bmp 再縮到低解析度
-  cx.drawImage(TRACK.bmp, 0, 0, mw, mh);
+  cx.drawImage(worldCV, 0, 0, mw, mh);
   TRACK.mw = mw; TRACK.mh = mh;
   TRACK.mdata = cx.getImageData(0, 0, mw, mh).data;
 
   TRACK.ready = true;
+
+  // C) ★ 圖就緒後才把車放到路上
+  let sx = WORLD.width * 0.5, sy = WORLD.height * 0.5;
+  for (let dx = 0; dx < Math.min(2000, WORLD.width); dx += 10) {
+    if (isOnRoad(sx + dx, sy)) { car.x = sx + dx; car.y = sy; break; }
+  }
+  updateCamera();
 })();
+
 
 const car = {
   x: 400, y: 300,
@@ -84,13 +107,13 @@ function worldToScreen(wx, wy) { return { x: wx - camera.x, y: wy - camera.y }; 
 // 把賽道圖畫到世界（會跟著相機捲動）
 function drawTrackImage() {
   if (!TRACK.ready) return;
-  // 從「世界尺寸的快取位圖」裁切相機視窗，0縮放繪製
   ctx.drawImage(
     TRACK.bmp,
-    camera.x, camera.y, VIEW.w, VIEW.h, // source rect in world
-    0, 0, VIEW.w, VIEW.h                // dest rect on screen
+    camera.x, camera.y, VIEW.w, VIEW.h, // source rect (世界)
+    0, 0, VIEW.w, VIEW.h                // dest rect (螢幕)
   );
 }
+
 
 // 將世界座標映到賽道圖像素座標
 function worldToTrackUV(wx, wy) {
