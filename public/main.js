@@ -24,20 +24,38 @@ const VIEW = {
 };
 
 // ======================= State =======================
-// ===== Track image (用圖片當賽道) =====
-const TRACK = { img: new Image(), ready: false, iw: 0, ih: 0, data: null, cv: null, cx: null };
-TRACK.img.src = 'track2.png';            // ← 若檔名不同改這裡
-TRACK.img.onload = () => {
-  TRACK.iw = TRACK.img.naturalWidth;    // 例如 1365
-  TRACK.ih = TRACK.img.naturalHeight;   // 例如 768
-  // 建立一個離屏畫布做像素取樣（當作碰撞/路面 mask）
-  TRACK.cv = document.createElement('canvas');
-  TRACK.cv.width = TRACK.iw; TRACK.cv.height = TRACK.ih;
-  TRACK.cx = TRACK.cv.getContext('2d');
-  TRACK.cx.drawImage(TRACK.img, 0, 0);
-  TRACK.data = TRACK.cx.getImageData(0, 0, TRACK.iw, TRACK.ih).data;
-  TRACK.ready = true;
+// ===== Track image (快取成世界大小 + 低解析度 mask) =====
+const TRACK = {
+  ready: false,
+  bmp: null,          // 已縮放到 WORLD 的 ImageBitmap
+  mw: 0, mh: 0,       // mask 尺寸
+  mdata: null         // mask 的像素資料
 };
+const TRACK_SRC = 'track2.png'; // 檔名自行對應
+
+(async function loadTrack() {
+  const img = new Image();
+  img.src = TRACK_SRC;
+  await img.decode();
+
+  // 1) 一次性縮放到 WORLD 尺寸（之後只做裁切，不再縮放）
+  TRACK.bmp = await createImageBitmap(
+    img, { resizeWidth: WORLD.width, resizeHeight: WORLD.height, resizeQuality: 'high' }
+  );
+
+  // 2) 做一張低解析度的碰撞 mask（加速 isOnRoad）
+  const mw = Math.min(1024, WORLD.width);
+  const mh = Math.round(WORLD.height * (mw / WORLD.width));
+  const cv = document.createElement('canvas');
+  cv.width = mw; cv.height = mh;
+  const cx = cv.getContext('2d', { willReadFrequently: true });
+  // 直接用已縮放的 bmp 再縮到低解析度
+  cx.drawImage(TRACK.bmp, 0, 0, mw, mh);
+  TRACK.mw = mw; TRACK.mh = mh;
+  TRACK.mdata = cx.getImageData(0, 0, mw, mh).data;
+
+  TRACK.ready = true;
+})();
 
 const car = {
   x: 400, y: 300,
