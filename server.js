@@ -24,7 +24,7 @@ const WORLD = { width: 4000, height: 3000 };
 // 固定障礙物，由伺服器開機時生成一次，所有玩家一致
 const obstacles = [];
 (function generateObstacles() {
-  const count = 30;
+  const count = 0;
   for (let i = 0; i < count; i++) {
     obstacles.push({
       x: Math.random() * (WORLD.width  - 60) + 30,
