@@ -3,7 +3,7 @@ const WS_URL = (location.protocol === 'https:' ? 'wss' : 'ws') + '://' + locatio
 const ws = new WebSocket(WS_URL);
 
 // ======================= Canvas / World =======================
-let WORLD = { width: 4000, height: 3000 };
+let WORLD = { width: 8000, height: 6000 };
 const camera = { x: 0, y: 0 };
 
 const canvas = document.getElementById('gameCanvas');
@@ -26,7 +26,7 @@ const VIEW = {
 // ======================= State =======================
 // ===== Track image (用圖片當賽道) =====
 const TRACK = { img: new Image(), ready: false, iw: 0, ih: 0, data: null, cv: null, cx: null };
-TRACK.img.src = 'track.png';            // ← 若檔名不同改這裡
+TRACK.img.src = 'track2.png';            // ← 若檔名不同改這裡
 TRACK.img.onload = () => {
   TRACK.iw = TRACK.img.naturalWidth;    // 例如 1365
   TRACK.ih = TRACK.img.naturalHeight;   // 例如 768
