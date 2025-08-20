@@ -84,8 +84,14 @@ function worldToScreen(wx, wy) { return { x: wx - camera.x, y: wy - camera.y }; 
 // 把賽道圖畫到世界（會跟著相機捲動）
 function drawTrackImage() {
   if (!TRACK.ready) return;
-  ctx.drawImage(TRACK.img, -camera.x, -camera.y, WORLD.width, WORLD.height);
+  // 從「世界大小的位圖」裁出相機視窗這塊，畫到畫面
+  ctx.drawImage(
+    TRACK.bmp,
+    camera.x, camera.y, VIEW.w, VIEW.h,  // source rect (世界座標)
+    0, 0, VIEW.w, VIEW.h                // dest rect   (螢幕座標)
+  );
 }
+
 
 // 將世界座標映到賽道圖像素座標
 function worldToTrackUV(wx, wy) {
@@ -96,16 +102,22 @@ function worldToTrackUV(wx, wy) {
 
 // 判斷是否在「灰色柏油路面」上（以低飽和灰色做為路面）
 function isOnRoad(wx, wy) {
-  if (!TRACK.ready) return true; // 還沒載好先放行
-  const { u, v } = worldToTrackUV(wx, wy);
-  if (u < 0 || v < 0 || u >= TRACK.iw || v >= TRACK.ih) return false;
-  const i = (v * TRACK.iw + u) * 4;
-  const r = TRACK.data[i], g = TRACK.data[i + 1], b = TRACK.data[i + 2], a = TRACK.data[i + 3];
+  if (!TRACK.ready) return true;
+  // 映到低解析度 mask
+  const u = (wx * TRACK.mw / WORLD.width) | 0;
+  const v = (wy * TRACK.mh / WORLD.height) | 0;
+  if (u < 0 || v < 0 || u >= TRACK.mw || v >= TRACK.mh) return false;
+
+  const i = (v * TRACK.mw + u) * 4;
+  const r = TRACK.mdata[i], g = TRACK.mdata[i+1], b = TRACK.mdata[i+2], a = TRACK.mdata[i+3];
   if (a < 16) return false;
-  const isGray = Math.abs(r - g) < 18 && Math.abs(g - b) < 18; // 近似灰
-  const Y = (r + g + b) / 3;                                   // 亮度
-  return isGray && Y > 70 && Y < 200;                          // 中等亮度的灰=柏油
+
+  // 以近似灰色當柏油（依你的圖：灰路、綠草）
+  const gray = Math.abs(r - g) < 18 && Math.abs(g - b) < 18;
+  const Y = (r + g + b) / 3;
+  return gray && Y > 70 && Y < 200;
 }
+
 if (TRACK.ready) {
   // 從世界中央往右掃到第一個在路上的點就放車
   let sx = WORLD.width * 0.5, sy = WORLD.height * 0.5;
