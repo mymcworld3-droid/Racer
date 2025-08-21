@@ -94,6 +94,7 @@ const TRACK_SRC = 'track2.png';
   for (let dx = 0; dx < Math.min(3000, WORLD.width); dx += 10) {
     if (isOnRoad(cxWorld + dx, cyWorld)) { car.x = cxWorld + dx; car.y = cyWorld; break; }
   }
+  console.log('[track] ready bw/bh/scale =', TRACK.bw, TRACK.bh, TRACK.scale);
   updateCamera();
 })();
 
