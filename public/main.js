@@ -3,7 +3,7 @@ const WS_URL = (location.protocol === 'https:' ? 'wss' : 'ws') + '://' + locatio
 const ws = new WebSocket(WS_URL);
 
 // ======================= Canvas / World =======================
-let WORLD = { width: 12000, height: 9000 };
+let WORLD = { width: 24000, height: 18000 };
 const camera = { x: 0, y: 0 };
 
 const canvas = document.getElementById('gameCanvas');
