@@ -8,6 +8,8 @@ const camera = { x: 0, y: 0 };
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;     // ← 新增
+
 
 // HiDPI
 (function () {
@@ -80,6 +82,7 @@ const TRACK_SRC = 'track2.png';
   const cv = document.createElement('canvas');
   cv.width = mw; cv.height = mh;
   const cx = cv.getContext('2d', { willReadFrequently: true });
+  cx.imageSmoothingEnabled = false;      // ← 新增
   cx.drawImage(worldCV, 0, 0, mw, mh);
   TRACK.mw = mw; TRACK.mh = mh;
   TRACK.mdata = cx.getImageData(0, 0, mw, mh).data;
@@ -122,12 +125,11 @@ function worldToScreen(wx, wy) { return { x: wx - camera.x, y: wy - camera.y }; 
 // 把賽道圖畫到世界（會跟著相機捲動）
 function drawTrackImage() {
   if (!TRACK.ready) return;
+  ctx.imageSmoothingEnabled = false;
   const s = TRACK.scale;
-  ctx.drawImage(
-    TRACK.bmp,
-    camera.x * s, camera.y * s, VIEW.w * s, VIEW.h * s,  // source（位圖座標）
-    0, 0, VIEW.w, VIEW.h                                  // dest（螢幕座標）
-  );
+  let sx = Math.max(0, Math.min(TRACK.bw - VIEW.w * s, camera.x * s));
+  let sy = Math.max(0, Math.min(TRACK.bh - VIEW.h * s, camera.y * s));
+  ctx.drawImage(TRACK.bmp, sx, sy, VIEW.w * s, VIEW.h * s, 0, 0, VIEW.w, VIEW.h);
 }
 // 將世界座標映到賽道圖像素座標
 function worldToTrackUV(wx, wy) {
