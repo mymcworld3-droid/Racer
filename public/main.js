@@ -88,13 +88,13 @@ const TRACK_SRC = 'track2.png';
   TRACK.mdata = cx.getImageData(0, 0, mw, mh).data;
 
   TRACK.ready = true;
+  console.log('[track] ready bw/bh/scale =', TRACK.bw, TRACK.bh, TRACK.scale);
 
   // ★ 圖就緒後再把車放到「有路」的位置
   const cxWorld = WORLD.width * 0.5, cyWorld = WORLD.height * 0.5;
   for (let dx = 0; dx < Math.min(3000, WORLD.width); dx += 10) {
     if (isOnRoad(cxWorld + dx, cyWorld)) { car.x = cxWorld + dx; car.y = cyWorld; break; }
   }
-  console.log('[track] ready bw/bh/scale =', TRACK.bw, TRACK.bh, TRACK.scale);
   updateCamera();
 })();
 
