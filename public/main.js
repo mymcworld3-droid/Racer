@@ -35,91 +35,66 @@ const VIEW = {
 };
 
 // ======================= State =======================
-// ===== Track image (快取成世界大小 + 低解析度 mask) =====
+// ===== Track image (快取成世界大小 + 精準取樣) =====
 const TRACK = {
   ready: false,
-  bmp: null,          // 快取位圖（縮到安全尺寸）
-  bw: 0, bh: 0,       // 位圖實際寬高
+  bmp: null,          // 縮到安全尺寸後的位圖（用來畫）
+  canvas: null,       // 同一張縮圖的 Canvas（用來取樣顏色）
+  bw: 0, bh: 0,       // 位圖寬高
   scale: 1,           // = bw/WORLD.width = bh/WORLD.height
-  mw: 0, mh: 0,       // 低解析度 mask 尺寸
-  mdata: null         // mask 像素
+  // 1x1 取樣畫布
+  pickCV: null,
+  pick: null
 };
 const TRACK_SRC = 'track2.png';
 
 (async function loadTrack() {
-  dbg('loadTrack start', TRACK_SRC, 'world=', WORLD.width, 'x', WORLD.height);
-
   const img = new Image();
-  img.addEventListener('load', () => dbg('img loaded', img.naturalWidth, 'x', img.naturalHeight));
-  img.addEventListener('error', () => dbg('img ERROR loading:', TRACK_SRC));
-  img.src = TRACK_SRC;
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = TRACK_SRC; });
 
-  try {
-    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
-  } catch (e) {
-    dbg('loadTrack failed:', e?.message || e);
-    return;
-  }
-
-  // 同時限制「面積」與「單邊尺寸」
-  const MAX_AREA = 4096 * 4096;   // ~16MP（可依裝置調整）
-  const MAX_DIM  = 4096;          // 單邊上限
+  // 限制縮圖大小：同時顧單邊與面積（避免爆記憶體/卡 GPU）
+  const MAX_AREA = 4096 * 4096;
+  const MAX_DIM  = 4096;
   const worldArea = WORLD.width * WORLD.height;
-
   const sArea = Math.min(1, Math.sqrt(MAX_AREA / worldArea));
   const sDim  = Math.min(1, MAX_DIM / WORLD.width, MAX_DIM / WORLD.height);
   const s     = Math.min(sArea, sDim);
 
-  // 產生縮好的世界圖（之後只做裁切，不再縮放）
   const bw = Math.max(1, Math.floor(WORLD.width  * s));
   const bh = Math.max(1, Math.floor(WORLD.height * s));
-  dbg('scaled bitmap size', bw, 'x', bh, 'scale=', s.toFixed(6), 'createIB=', !!window.createImageBitmap);
 
+  // 把原圖縮成「世界縮圖」一次到位
   const worldCV = document.createElement('canvas');
   worldCV.width = bw; worldCV.height = bh;
   const wg = worldCV.getContext('2d');
   wg.imageSmoothingEnabled = false;
   wg.drawImage(img, 0, 0, bw, bh);
 
-  try {
-    TRACK.bmp = (window.createImageBitmap)
-      ? await createImageBitmap(worldCV)
-      : (() => { const t = new Image(); t.src = worldCV.toDataURL(); return t; })();
-  } catch (e) {
-    dbg('createImageBitmap failed, fallback img', e?.message || e);
-    const t = new Image(); t.src = worldCV.toDataURL();
-    await new Promise(r => t.onload = r);
-    TRACK.bmp = t;
-  }
+  // 用縮圖做繪製來源
+  TRACK.bmp = (window.createImageBitmap)
+    ? await createImageBitmap(worldCV)
+    : (() => { const t = new Image(); t.src = worldCV.toDataURL(); return t; })();
+
+  // ↓↓↓ 關鍵：把縮圖 Canvas 本體保留，用來「精準取樣」 ↓↓↓
+  TRACK.canvas = worldCV;
+
+  // 準備 1×1 取樣畫布
+  TRACK.pickCV = document.createElement('canvas');
+  TRACK.pickCV.width = 1; TRACK.pickCV.height = 1;
+  TRACK.pick = TRACK.pickCV.getContext('2d', { willReadFrequently: true });
+  TRACK.pick.imageSmoothingEnabled = false;
 
   TRACK.bw = bw; TRACK.bh = bh; TRACK.scale = s;
-
-  // 低解析度 mask（再縮一階，專供像素取樣）
-  const mw = Math.min(1024, bw);
-  const mh = Math.round(bh * (mw / bw));
-  const cv = document.createElement('canvas');
-  cv.width = mw; cv.height = mh;
-  const cx = cv.getContext('2d', { willReadFrequently: true });
-  cx.imageSmoothingEnabled = false;
-  cx.drawImage(worldCV, 0, 0, mw, mh);
-  TRACK.mw = mw; TRACK.mh = mh;
-  TRACK.mdata = cx.getImageData(0, 0, mw, mh).data;
-
   TRACK.ready = true;
-  dbg('track ready bw/bh/scale =', TRACK.bw, TRACK.bh, TRACK.scale, 'mask=', TRACK.mw, 'x', TRACK.mh);
 
-  // ★ 圖就緒後再把車放到「有路」的位置
+  // 把車丟到第一個找到的「路」上
   const cxWorld = WORLD.width * 0.5, cyWorld = WORLD.height * 0.5;
   for (let dx = 0; dx < Math.min(3000, WORLD.width); dx += 10) {
-    if (isOnRoad(cxWorld + dx, cyWorld)) { 
-      car.x = cxWorld + dx; 
-      car.y = cyWorld; 
-      dbg('spawn at', car.x, car.y); 
-      break; 
-    }
+    if (isOnRoad(cxWorld + dx, cyWorld)) { car.x = cxWorld + dx; car.y = cyWorld; break; }
   }
   updateCamera();
 })();
+
 
 const car = {
   x: 400, y: 300,
@@ -145,13 +120,16 @@ function updateCamera() {
 }
 function worldToScreen(wx, wy) { return { x: wx - camera.x, y: wy - camera.y }; }
 
+// 把賽道圖畫到世界（會跟著相機捲動）— 用整數像素裁切避免位移
 function drawTrackImage() {
-  if (!TRACK.ready || !TRACK.bmp) { /*dbg('track not ready');*/ return; }
+  if (!TRACK.ready || !TRACK.bmp) return;
   const s = TRACK.scale;
-  let sx = Math.max(0, Math.min(TRACK.bw - VIEW.w * s, camera.x * s));
-  let sy = Math.max(0, Math.min(TRACK.bh - VIEW.h * s, camera.y * s));
+  const sw = Math.round(VIEW.w * s);
+  const sh = Math.round(VIEW.h * s);
+  const sx = Math.max(0, Math.min(TRACK.bw - sw, Math.round(camera.x * s)));
+  const sy = Math.max(0, Math.min(TRACK.bh - sh, Math.round(camera.y * s)));
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(TRACK.bmp, sx, sy, VIEW.w * s, VIEW.h * s, 0, 0, VIEW.w, VIEW.h);
+  ctx.drawImage(TRACK.bmp, sx, sy, sw, sh, 0, 0, VIEW.w, VIEW.h);
 }
 
 // 將世界座標映到賽道圖像素座標（用低解析度 mask）
@@ -160,19 +138,30 @@ function worldToTrackUV(wx, wy) {
   const v = Math.floor(wy * (TRACK.mh / WORLD.height));
   return { u, v };
 }
+// 從與畫面相同的縮圖上「取 1 像素」判斷是否是柏油
 function isOnRoad(wx, wy) {
-  if (!TRACK.ready) return true;
-  const { u, v } = worldToTrackUV(wx, wy);
-  if (u < 0 || v < 0 || u >= TRACK.mw || v >= TRACK.mh) return false;
+  if (!TRACK.ready || !TRACK.canvas || !TRACK.pick) return true;
 
-  const i = (v * TRACK.mw + u) * 4;
-  const r = TRACK.mdata[i], g = TRACK.mdata[i+1], b = TRACK.mdata[i+2], a = TRACK.mdata[i+3];
-  if (a < 16) return false;
+  // 世界座標 → 縮圖座標（與 drawTrackImage 同一把尺）
+  const s = TRACK.scale;
+  let u = Math.round(wx * s);
+  let v = Math.round(wy * s);
+  if (u < 0 || v < 0 || u >= TRACK.bw || v >= TRACK.bh) return false;
 
-  // 灰路 / 綠草：抓中亮度灰
-  const isGray = Math.abs(r - g) < 18 && Math.abs(g - b) < 18;
-  const Y = (r + g + b) / 3;
-  return isGray && Y > 70 && Y < 200;
+  // 在 1×1 取樣畫布上抓顏色
+  TRACK.pick.clearRect(0, 0, 1, 1);
+  TRACK.pick.drawImage(TRACK.canvas, u, v, 1, 1, 0, 0, 1, 1);
+  const d = TRACK.pick.getImageData(0, 0, 1, 1).data;
+  const r = d[0], g = d[1], b = d[2], a = d[3];
+  if (a < 8) return false;
+
+  // 「灰路」判斷：低飽和 + 中亮度（比原本 mask 更貼著你看到的畫面）
+  const maxv = Math.max(r, g, b), minv = Math.min(r, g, b);
+  const sat  = maxv - minv;
+  const Y    = (r + g + b) / 3;
+  const isGray = sat < 28;          // 放寬飽和度（避免因縮放失真）
+  const midY   = (Y > 60 && Y < 210);
+  return isGray && midY;
 }
 
 function drawGrid(step = 100) {
