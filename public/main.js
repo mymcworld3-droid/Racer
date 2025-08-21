@@ -27,41 +27,42 @@ const VIEW = {
 // ===== Track image (快取成世界大小 + 低解析度 mask) =====
 const TRACK = {
   ready: false,
-  bmp: null,          // 已縮放到 WORLD 的 ImageBitmap
-  mw: 0, mh: 0,       // mask 尺寸
-  mdata: null         // mask 的像素資料
+  bmp: null,          // 快取位圖（縮到安全尺寸）
+  bw: 0, bh: 0,       // 位圖實際寬高
+  scale: 1,           // = bw/WORLD.width = bh/WORLD.height
+  mw: 0, mh: 0,       // 低解析度 mask 尺寸
+  mdata: null         // mask 像素
 };
-const TRACK_SRC = 'track2.png'; // 檔名自行對應
+
+const TRACK_SRC = 'track2.png';
+
 (async function loadTrack() {
   const img = new Image();
   img.src = TRACK_SRC;
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
 
-  // 安全載入（相容舊瀏覽器）
-  await new Promise((resolve, reject) => {
-    img.onload = resolve;
-    img.onerror = reject;
-  });
+  // 安全上限：~16MP（可依裝置調整成 4096*4096 或 3072*3072）
+  const MAX_AREA = 4096 * 4096;
+  const worldArea = WORLD.width * WORLD.height;
+  const s = Math.min(1, Math.sqrt(MAX_AREA / worldArea));  // 縮放係數
 
-  // A) 一次性縮放到 WORLD 尺寸（畫到離屏 canvas）
+  // 建一張「已縮好的世界圖」
+  const bw = Math.max(1, Math.floor(WORLD.width  * s));
+  const bh = Math.max(1, Math.floor(WORLD.height * s));
   const worldCV = document.createElement('canvas');
-  worldCV.width = WORLD.width;
-  worldCV.height = WORLD.height;
-  worldCV.getContext('2d').drawImage(img, 0, 0, WORLD.width, WORLD.height);
+  worldCV.width = bw; worldCV.height = bh;
+  worldCV.getContext('2d').drawImage(img, 0, 0, bw, bh);
 
-  // 建立世界尺寸的可繪位圖（drawImage 時只需裁切，不再縮放）
-  if (window.createImageBitmap) {
-    TRACK.bmp = await createImageBitmap(worldCV);
-  } else {
-    // 極少數環境沒有 createImageBitmap，用 <img> 當替代
-    const tmp = new Image();
-    tmp.src = worldCV.toDataURL();
-    await new Promise(r => (tmp.onload = r));
-    TRACK.bmp = tmp;
-  }
+  TRACK.bmp   = (window.createImageBitmap)
+    ? await createImageBitmap(worldCV)
+    : (() => { const t = new Image(); t.src = worldCV.toDataURL(); return t; })();
+  TRACK.bw    = bw;
+  TRACK.bh    = bh;
+  TRACK.scale = s;
 
-  // B) 低解析度碰撞 mask（大幅減少像素取樣成本）
-  const mw = Math.min(1024, WORLD.width);
-  const mh = Math.round(WORLD.height * (mw / WORLD.width));
+  // 低解析度碰撞 mask（再縮一階）
+  const mw = Math.min(1024, bw);
+  const mh = Math.round(bh * (mw / bw));
   const cv = document.createElement('canvas');
   cv.width = mw; cv.height = mh;
   const cx = cv.getContext('2d', { willReadFrequently: true });
@@ -71,14 +72,13 @@ const TRACK_SRC = 'track2.png'; // 檔名自行對應
 
   TRACK.ready = true;
 
-  // C) ★ 圖就緒後才把車放到路上
+  // ★ 圖就緒後再把車放到路上
   let sx = WORLD.width * 0.5, sy = WORLD.height * 0.5;
-  for (let dx = 0; dx < Math.min(2000, WORLD.width); dx += 10) {
+  for (let dx = 0; dx < Math.min(3000, WORLD.width); dx += 10) {
     if (isOnRoad(sx + dx, sy)) { car.x = sx + dx; car.y = sy; break; }
   }
   updateCamera();
 })();
-
 
 const car = {
   x: 400, y: 300,
@@ -107,14 +107,13 @@ function worldToScreen(wx, wy) { return { x: wx - camera.x, y: wy - camera.y }; 
 // 把賽道圖畫到世界（會跟著相機捲動）
 function drawTrackImage() {
   if (!TRACK.ready) return;
+  const s = TRACK.scale;
   ctx.drawImage(
     TRACK.bmp,
-    camera.x, camera.y, VIEW.w, VIEW.h, // source rect (世界)
-    0, 0, VIEW.w, VIEW.h                // dest rect (螢幕)
+    camera.x * s, camera.y * s, VIEW.w * s, VIEW.h * s,  // source（位圖座標）
+    0, 0, VIEW.w, VIEW.h                                  // dest（螢幕座標）
   );
 }
-
-
 // 將世界座標映到賽道圖像素座標
 function worldToTrackUV(wx, wy) {
   const u = Math.floor(wx * (TRACK.mw / WORLD.width));
