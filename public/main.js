@@ -41,26 +41,40 @@ const TRACK_SRC = 'track2.png';
   img.src = TRACK_SRC;
   await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
 
-  // 安全上限：~16MP（可依裝置調整成 4096*4096 或 3072*3072）
-  const MAX_AREA = 4096 * 4096;
+  // 同時限制「面積」與「單邊尺寸」
+  const MAX_AREA = 4096 * 4096;   // ~16MP
+  const MAX_DIM  = 4096;          // 單邊上限（很多裝置的安全值）
   const worldArea = WORLD.width * WORLD.height;
-  const s = Math.min(1, Math.sqrt(MAX_AREA / worldArea));  // 縮放係數
 
-  // 建一張「已縮好的世界圖」
+  // 面積縮放
+  const sArea = Math.min(1, Math.sqrt(MAX_AREA / worldArea));
+  // 單邊縮放
+  const sDim  = Math.min(1, MAX_DIM / WORLD.width, MAX_DIM / WORLD.height);
+  // 取更嚴格者
+  const s = Math.min(sArea, sDim);
+
+  // 產生縮好的世界圖（之後只做裁切，不再縮放）
   const bw = Math.max(1, Math.floor(WORLD.width  * s));
   const bh = Math.max(1, Math.floor(WORLD.height * s));
   const worldCV = document.createElement('canvas');
   worldCV.width = bw; worldCV.height = bh;
   worldCV.getContext('2d').drawImage(img, 0, 0, bw, bh);
 
-  TRACK.bmp   = (window.createImageBitmap)
-    ? await createImageBitmap(worldCV)
-    : (() => { const t = new Image(); t.src = worldCV.toDataURL(); return t; })();
-  TRACK.bw    = bw;
-  TRACK.bh    = bh;
+  if (window.createImageBitmap) {
+    TRACK.bmp = await createImageBitmap(worldCV);
+  } else {
+    // 極少見環境的後備方案：等待載入完成再用
+    const t = new Image();
+    t.src = worldCV.toDataURL();
+    await new Promise(r => (t.onload = r));
+    TRACK.bmp = t;
+  }
+
+  TRACK.bw = bw;
+  TRACK.bh = bh;
   TRACK.scale = s;
 
-  // 低解析度碰撞 mask（再縮一階）
+  // 低解析度 mask（再縮一階，專供像素取樣）
   const mw = Math.min(1024, bw);
   const mh = Math.round(bh * (mw / bw));
   const cv = document.createElement('canvas');
@@ -72,13 +86,14 @@ const TRACK_SRC = 'track2.png';
 
   TRACK.ready = true;
 
-  // ★ 圖就緒後再把車放到路上
-  let sx = WORLD.width * 0.5, sy = WORLD.height * 0.5;
+  // ★ 圖就緒後再把車放到「有路」的位置
+  const cxWorld = WORLD.width * 0.5, cyWorld = WORLD.height * 0.5;
   for (let dx = 0; dx < Math.min(3000, WORLD.width); dx += 10) {
-    if (isOnRoad(sx + dx, sy)) { car.x = sx + dx; car.y = sy; break; }
+    if (isOnRoad(cxWorld + dx, cyWorld)) { car.x = cxWorld + dx; car.y = cyWorld; break; }
   }
   updateCamera();
 })();
+
 
 const car = {
   x: 400, y: 300,
