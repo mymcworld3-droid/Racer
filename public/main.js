@@ -36,23 +36,23 @@ const VIEW = {
 
 // ======================= State =======================
 // ===== Track image (快取成世界大小 + 精準取樣) =====
+// ===== Track image (快取成世界大小 + 精準取樣) =====
 const TRACK = {
   ready: false,
   bmp: null,          // 縮到安全尺寸後的位圖（用來畫）
   canvas: null,       // 同一張縮圖的 Canvas（用來取樣顏色）
-  bw: 0, bh: 0,       // 位圖寬高
-  scale: 1,           // = bw/WORLD.width = bh/WORLD.height
-  // 1x1 取樣畫布
-  pickCV: null,
+  bw: 0, bh: 0,       // 位圖寬高（整數）
+  scaleX: 1,          // = bw / WORLD.width
+  scaleY: 1,          // = bh / WORLD.height
+  pickCV: null,       // 1x1 取樣畫布
   pick: null
 };
-const TRACK_SRC = 'track2.png';
 
+const TRACK_SRC = 'track2.png';
 (async function loadTrack() {
   const img = new Image();
   await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = TRACK_SRC; });
 
-  // 限制縮圖大小：同時顧單邊與面積（避免爆記憶體/卡 GPU）
   const MAX_AREA = 4096 * 4096;
   const MAX_DIM  = 4096;
   const worldArea = WORLD.width * WORLD.height;
@@ -60,32 +60,33 @@ const TRACK_SRC = 'track2.png';
   const sDim  = Math.min(1, MAX_DIM / WORLD.width, MAX_DIM / WORLD.height);
   const s     = Math.min(sArea, sDim);
 
-  const bw = Math.max(1, Math.floor(WORLD.width  * s));
-  const bh = Math.max(1, Math.floor(WORLD.height * s));
+  // 用 round 避免縮圖比理想值小 1 像素，導致邊緣少畫
+  const bw = Math.max(1, Math.round(WORLD.width  * s));
+  const bh = Math.max(1, Math.round(WORLD.height * s));
 
-  // 把原圖縮成「世界縮圖」一次到位
   const worldCV = document.createElement('canvas');
   worldCV.width = bw; worldCV.height = bh;
   const wg = worldCV.getContext('2d');
   wg.imageSmoothingEnabled = false;
   wg.drawImage(img, 0, 0, bw, bh);
 
-  // 用縮圖做繪製來源
   TRACK.bmp = (window.createImageBitmap)
     ? await createImageBitmap(worldCV)
     : (() => { const t = new Image(); t.src = worldCV.toDataURL(); return t; })();
 
-  // ↓↓↓ 關鍵：把縮圖 Canvas 本體保留，用來「精準取樣」 ↓↓↓
   TRACK.canvas = worldCV;
 
-  // 準備 1×1 取樣畫布
   TRACK.pickCV = document.createElement('canvas');
   TRACK.pickCV.width = 1; TRACK.pickCV.height = 1;
   TRACK.pick = TRACK.pickCV.getContext('2d', { willReadFrequently: true });
   TRACK.pick.imageSmoothingEnabled = false;
 
-  TRACK.bw = bw; TRACK.bh = bh; TRACK.scale = s;
+  TRACK.bw = bw; TRACK.bh = bh;
+  TRACK.scaleX = bw / WORLD.width;
+  TRACK.scaleY = bh / WORLD.height;
+
   TRACK.ready = true;
+  dbg('track ready bw/bh=', bw, bh, 'scale=', TRACK.scaleX.toFixed(6), TRACK.scaleY.toFixed(6));
 
   // 把車丟到第一個找到的「路」上
   const cxWorld = WORLD.width * 0.5, cyWorld = WORLD.height * 0.5;
@@ -123,14 +124,14 @@ function worldToScreen(wx, wy) { return { x: wx - camera.x, y: wy - camera.y }; 
 // 把賽道圖畫到世界（會跟著相機捲動）— 用整數像素裁切避免位移
 function drawTrackImage() {
   if (!TRACK.ready || !TRACK.bmp) return;
-  const s = TRACK.scale;
-  const sw = Math.round(VIEW.w * s);
-  const sh = Math.round(VIEW.h * s);
-  const sx = Math.max(0, Math.min(TRACK.bw - sw, Math.round(camera.x * s)));
-  const sy = Math.max(0, Math.min(TRACK.bh - sh, Math.round(camera.y * s)));
+  const sx = Math.round(camera.x * TRACK.scaleX);
+  const sy = Math.round(camera.y * TRACK.scaleY);
+  const sw = Math.min(TRACK.bw - sx, Math.round(VIEW.w * TRACK.scaleX) + 1); // +1 防止邊緣缺列
+  const sh = Math.min(TRACK.bh - sy, Math.round(VIEW.h * TRACK.scaleY) + 1);
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(TRACK.bmp, sx, sy, sw, sh, 0, 0, VIEW.w, VIEW.h);
 }
+
 
 // 將世界座標映到賽道圖像素座標（用低解析度 mask）
 function worldToTrackUV(wx, wy) {
@@ -142,27 +143,24 @@ function worldToTrackUV(wx, wy) {
 function isOnRoad(wx, wy) {
   if (!TRACK.ready || !TRACK.canvas || !TRACK.pick) return true;
 
-  // 世界座標 → 縮圖座標（與 drawTrackImage 同一把尺）
-  const s = TRACK.scale;
-  let u = Math.round(wx * s);
-  let v = Math.round(wy * s);
+  let u = Math.round(wx * TRACK.scaleX);
+  let v = Math.round(wy * TRACK.scaleY);
   if (u < 0 || v < 0 || u >= TRACK.bw || v >= TRACK.bh) return false;
 
-  // 在 1×1 取樣畫布上抓顏色
   TRACK.pick.clearRect(0, 0, 1, 1);
   TRACK.pick.drawImage(TRACK.canvas, u, v, 1, 1, 0, 0, 1, 1);
   const d = TRACK.pick.getImageData(0, 0, 1, 1).data;
   const r = d[0], g = d[1], b = d[2], a = d[3];
   if (a < 8) return false;
 
-  // 「灰路」判斷：低飽和 + 中亮度（比原本 mask 更貼著你看到的畫面）
   const maxv = Math.max(r, g, b), minv = Math.min(r, g, b);
   const sat  = maxv - minv;
   const Y    = (r + g + b) / 3;
-  const isGray = sat < 28;          // 放寬飽和度（避免因縮放失真）
+  const isGray = sat < 28;
   const midY   = (Y > 60 && Y < 210);
   return isGray && midY;
 }
+
 
 function drawGrid(step = 100) {
   ctx.save();
