@@ -35,13 +35,12 @@ const VIEW = {
 };
 
 // ======================= State =======================
-// ===== Track image (快取成世界大小 + 精準取樣) =====
-// ===== Track image (快取成世界大小 + 精準取樣) =====
+// ===== Track image (快取成安全縮圖 + 精準取樣) =====
 const TRACK = {
   ready: false,
   bmp: null,          // 縮到安全尺寸後的位圖（用來畫）
   canvas: null,       // 同一張縮圖的 Canvas（用來取樣顏色）
-  bw: 0, bh: 0,       // 位圖寬高（整數）
+  bw: 0, bh: 0,       // 縮圖寬高（整數）
   scaleX: 1,          // = bw / WORLD.width
   scaleY: 1,          // = bh / WORLD.height
   pickCV: null,       // 1x1 取樣畫布
@@ -49,21 +48,23 @@ const TRACK = {
 };
 
 const TRACK_SRC = 'track2.png';
+
 (async function loadTrack() {
   const img = new Image();
   await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = TRACK_SRC; });
 
-  const MAX_AREA = 4096 * 4096;
-  const MAX_DIM  = 4096;
-  const worldArea = WORLD.width * WORLD.height;
-  const sArea = Math.min(1, Math.sqrt(MAX_AREA / worldArea));
+  // 限制縮圖大小：同時顧單邊與面積（避免爆記憶體/卡 GPU）
+  const MAX_AREA = 4096 * 4096;    // ~16MP
+  const MAX_DIM  = 4096;           // 單邊上限
+  const sArea = Math.min(1, Math.sqrt(MAX_AREA / (WORLD.width * WORLD.height)));
   const sDim  = Math.min(1, MAX_DIM / WORLD.width, MAX_DIM / WORLD.height);
   const s     = Math.min(sArea, sDim);
 
-  // 用 round 避免縮圖比理想值小 1 像素，導致邊緣少畫
+  // 產生「實際」縮圖尺寸（整數）
   const bw = Math.max(1, Math.round(WORLD.width  * s));
   const bh = Math.max(1, Math.round(WORLD.height * s));
 
+  // 把原圖一次縮成世界縮圖
   const worldCV = document.createElement('canvas');
   worldCV.width = bw; worldCV.height = bh;
   const wg = worldCV.getContext('2d');
@@ -74,19 +75,20 @@ const TRACK_SRC = 'track2.png';
     ? await createImageBitmap(worldCV)
     : (() => { const t = new Image(); t.src = worldCV.toDataURL(); return t; })();
 
+  // ↓ 之後繪製與取樣都用「同一把尺」：scaleX/scaleY
   TRACK.canvas = worldCV;
+  TRACK.bw = bw; TRACK.bh = bh;
+  TRACK.scaleX = bw / WORLD.width;
+  TRACK.scaleY = bh / WORLD.height;
 
+  // 1×1 取樣畫布
   TRACK.pickCV = document.createElement('canvas');
   TRACK.pickCV.width = 1; TRACK.pickCV.height = 1;
   TRACK.pick = TRACK.pickCV.getContext('2d', { willReadFrequently: true });
   TRACK.pick.imageSmoothingEnabled = false;
 
-  TRACK.bw = bw; TRACK.bh = bh;
-  TRACK.scaleX = bw / WORLD.width;
-  TRACK.scaleY = bh / WORLD.height;
-
   TRACK.ready = true;
-  dbg('track ready bw/bh=', bw, bh, 'scale=', TRACK.scaleX.toFixed(6), TRACK.scaleY.toFixed(6));
+  dbg('track ready bw×bh=', bw, bh, 'scaleX/Y=', TRACK.scaleX.toFixed(6), TRACK.scaleY.toFixed(6));
 
   // 把車丟到第一個找到的「路」上
   const cxWorld = WORLD.width * 0.5, cyWorld = WORLD.height * 0.5;
@@ -95,7 +97,6 @@ const TRACK_SRC = 'track2.png';
   }
   updateCamera();
 })();
-
 
 const car = {
   x: 400, y: 300,
@@ -121,30 +122,29 @@ function updateCamera() {
 }
 function worldToScreen(wx, wy) { return { x: wx - camera.x, y: wy - camera.y }; }
 
-// 把賽道圖畫到世界（會跟著相機捲動）— 用整數像素裁切避免位移
+// 把賽道圖畫到世界（與取樣共用 scaleX/scaleY；邊緣 +2px 緩衝）
 function drawTrackImage() {
   if (!TRACK.ready || !TRACK.bmp) return;
-  const sx = Math.round(camera.x * TRACK.scaleX);
-  const sy = Math.round(camera.y * TRACK.scaleY);
-  const sw = Math.min(TRACK.bw - sx, Math.round(VIEW.w * TRACK.scaleX) + 1); // +1 防止邊緣缺列
-  const sh = Math.min(TRACK.bh - sy, Math.round(VIEW.h * TRACK.scaleY) + 1);
   ctx.imageSmoothingEnabled = false;
+
+  // 世界視窗 → 縮圖座標（左上用 floor，右下用 ceil）
+  const sx = Math.max(0, Math.floor(camera.x * TRACK.scaleX));
+  const sy = Math.max(0, Math.floor(camera.y * TRACK.scaleY));
+  const ex = Math.min(TRACK.bw, Math.ceil((camera.x + VIEW.w) * TRACK.scaleX) + 2); // +2 防縫
+  const ey = Math.min(TRACK.bh, Math.ceil((camera.y + VIEW.h) * TRACK.scaleY) + 2);
+  const sw = Math.max(0, ex - sx);
+  const sh = Math.max(0, ey - sy);
+
+  // 目的大小：直接覆蓋整個視窗
   ctx.drawImage(TRACK.bmp, sx, sy, sw, sh, 0, 0, VIEW.w, VIEW.h);
 }
 
-
-// 將世界座標映到賽道圖像素座標（用低解析度 mask）
-function worldToTrackUV(wx, wy) {
-  const u = Math.floor(wx * (TRACK.mw / WORLD.width));
-  const v = Math.floor(wy * (TRACK.mh / WORLD.height));
-  return { u, v };
-}
-// 從與畫面相同的縮圖上「取 1 像素」判斷是否是柏油
+// 從縮圖上取 1 像素判斷是否是柏油（與畫圖一致）
 function isOnRoad(wx, wy) {
   if (!TRACK.ready || !TRACK.canvas || !TRACK.pick) return true;
 
-  let u = Math.round(wx * TRACK.scaleX);
-  let v = Math.round(wy * TRACK.scaleY);
+  const u = Math.round(wx * TRACK.scaleX);
+  const v = Math.round(wy * TRACK.scaleY);
   if (u < 0 || v < 0 || u >= TRACK.bw || v >= TRACK.bh) return false;
 
   TRACK.pick.clearRect(0, 0, 1, 1);
@@ -153,14 +153,12 @@ function isOnRoad(wx, wy) {
   const r = d[0], g = d[1], b = d[2], a = d[3];
   if (a < 8) return false;
 
+  // 低飽和 + 中亮度 = 柏油（與畫面像素一致）
   const maxv = Math.max(r, g, b), minv = Math.min(r, g, b);
   const sat  = maxv - minv;
   const Y    = (r + g + b) / 3;
-  const isGray = sat < 28;
-  const midY   = (Y > 60 && Y < 210);
-  return isGray && midY;
+  return (sat < 28) && (Y > 60 && Y < 210);
 }
-
 
 function drawGrid(step = 100) {
   ctx.save();
@@ -170,7 +168,7 @@ function drawGrid(step = 100) {
   const viewLeft = camera.x, viewTop = camera.y;
   const viewRight = camera.x + VIEW.w, viewBottom = camera.y + VIEW.h;
   const startX = Math.floor(viewLeft / step) * step;
-  const startY = Math.floor(viewTop / step) * step;
+  const startY = Math.floor(viewTop  / step) * step;
 
   for (let x = startX; x <= viewRight; x += step) {
     const s = worldToScreen(x, 0);
@@ -219,11 +217,13 @@ function drawObstacle(o) {
 }
 
 function drawHud(){
-  const pad = 8, line = 14, w = 460, h = DBG.length*line + pad*2;
+  const pad = 8, line = 14, w = 520, h = DBG.length*line + pad*2;
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(10,10,w,h);
   ctx.font = '12px monospace'; ctx.fillStyle = '#b6f';
-  for(let i=0;i<DBG.length;i++) ctx.fillText(DBG[i], 18, 10+pad+i*line+10);
+  ctx.fillText(`VIEW=${VIEW.w}×${VIEW.h}  world=${WORLD.width}×${WORLD.height}`, 18, 24);
+  ctx.fillText(`bmp=${TRACK.bw}×${TRACK.bh}  scaleX=${TRACK.scaleX.toFixed(4)} scaleY=${TRACK.scaleY.toFixed(4)}`, 18, 38);
+  for(let i=0;i<DBG.length;i++) ctx.fillText(DBG[i], 18, 10+pad+i*line+28);
   ctx.restore();
 }
 
