@@ -19,7 +19,7 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 /** ---- 遊戲世界狀態（權威在伺服器） ---- */
-const WORLD = { width: 4000, height: 3000 };
+const WORLD = { width: 8000, height: 6000 };
 
 // 固定障礙物，由伺服器開機時生成一次，所有玩家一致
 const obstacles = [];
