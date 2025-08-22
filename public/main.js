@@ -90,11 +90,6 @@ const TRACK_SRC = 'track2.png';
   TRACK.ready = true;
   dbg('track ready bw×bh=', bw, bh, 'scaleX/Y=', TRACK.scaleX.toFixed(6), TRACK.scaleY.toFixed(6));
 
-  // 把車丟到第一個找到的「路」上
-  const cxWorld = WORLD.width * 0.5, cyWorld = WORLD.height * 0.5;
-  for (let dx = 0; dx < Math.min(3000, WORLD.width); dx += 10) {
-    if (isOnRoad(cxWorld + dx, cyWorld)) { car.x = cxWorld + dx; car.y = cyWorld; break; }
-  }
   updateCamera();
 })();
 
